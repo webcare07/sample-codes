@@ -23,7 +23,7 @@ class PagesController extends Controller
     /**
      * faq
      * action method to load faq page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -42,7 +42,7 @@ class PagesController extends Controller
     /**
      * aboutus
      * action method to load aboutus page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -61,7 +61,7 @@ class PagesController extends Controller
     /**
      * bank_account_instant_verification_user_terms
      * action method to load bank account instant verification page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -82,7 +82,7 @@ class PagesController extends Controller
     /**
      * submit_feedback
      * action method to load submit_feedback page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -150,7 +150,7 @@ class PagesController extends Controller
     /**
      * submit_ticket
      * action method to load submit_ticket page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -294,7 +294,7 @@ class PagesController extends Controller
     /**
      * developers
      * action method to load developers page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -313,7 +313,7 @@ class PagesController extends Controller
     /**
      * merchant_services
      * action method to load merchant_services page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -325,7 +325,7 @@ class PagesController extends Controller
     /**
      * mass_payment_service
      * action method to load mass_payment_service page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -337,7 +337,7 @@ class PagesController extends Controller
     /**
      * individual_payment_service
      * action method to load individual_payment_service page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */
@@ -349,7 +349,7 @@ class PagesController extends Controller
     /**
      * our_services
      * action method to load our_services page
-     * created Sep 9, 2016
+     * created Feb 9, 2017
      * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
      *
      */

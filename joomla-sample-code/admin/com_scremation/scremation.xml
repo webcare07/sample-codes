@@ -2,7 +2,7 @@
 <extension type="component" version="3.1" method="upgrade">
 	<name>com_scremation</name>
 	<author>Stephen.V</author>
-	<creationDate>Feb 2014</creationDate>
+	<creationDate>Feb 2017</creationDate>
 	<copyright>(C) 2005 - 2013 Open Source Matters. All rights reserved.</copyright>
 	<license>http://www.gnu.org/licenses/gpl-2.0.html GNU/GPL</license>
 	<authorEmail>testemailjpr@gmail.com</authorEmail>
