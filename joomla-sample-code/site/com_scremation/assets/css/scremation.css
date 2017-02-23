@@ -1,0 +1,59 @@
+/* CSS Document */
+.clear {
+	clear: both;
+}
+#scremation {
+	background-color: #fff;
+	border: 3px solid #d7d9da;
+	border-radius: 5px;
+	clear: both;
+	float: left;
+	margin: 0 0 0 2px;
+	min-height: 492px;
+	padding: 5px;
+	width: 75%;
+}
+.serviceprovider {
+	min-height: 871px !important;
+}
+#scremation h2.title {
+	font-size: 25px;
+	line-height: 25px;
+}
+#scremation a {
+	color: #0088CC;
+	text-decoration: underline;
+}
+#scremation .pagenotes {
+	font-size: 16px;
+	line-height: 22px;
+}
+#scremation .pagenotes a {
+	color: #0088CC;
+	text-decoration: underline;
+	font-weight: bold;
+}
+#scremation .control-group {
+	width: 100%;
+	clear: both;
+}
+#scremation .control-group h3 {
+	color: #0088CC;
+	font-weight: bold;
+	padding-left: 20px;
+}
+#scremation .control-group .control-label {
+	padding-left: 100px;
+	width:25%;
+	float:left;
+}
+#scremation .control-group .controls {
+	width:60%;
+	float:right;
+}
+#scremation input[type="radio"] {
+	margin: 0 10px 0 0 !important;
+}
+#scremation input[type="checkbox"] {
+	margin-top: 0px !important;
+}

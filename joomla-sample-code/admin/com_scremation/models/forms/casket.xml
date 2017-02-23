@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<form addrulepath="/administrator/components/com_scremation/models/fields">
+	<fieldset>
+       <field name="id" type="text" default="1" label="ID" readonly="true" class="readonly" description="ID" /> 
+
+       <field name="title" type="text" label="Title" description="Set Title" required="true" size="35"/> 
+
+       <field name="price" type="text" label="Default Price" description="Set Default Price" required="true" size="35" default="$0.00" /> 
+
+       <field name="manufacture" type="text" label="Manufacturer" description="Set Manufacturer" required="true" size="35" /> 
+
+       <field name="meterial" type="text" label="Meterial" description="Set Meterial" required="true" size="35" /> 
+
+       <field name="interior" type="text" label="Interior" description="Set Interior" required="true" size="35" /> 
+
+       <field name="casket_image" type="file" label="Image" description="Set Image" filter="raw" upload_directory="../images/scremation/casket" max_size="500" /> 
+
+       <field name="state" type="radio" label="Published" description="Set Published" class="radio btn-group" size="1" default="1">
+	   	<option value="1">JYES</option>
+        <option value="0">JNO</option>
+	   </field> 
+
+	</fieldset>
+
+</form>

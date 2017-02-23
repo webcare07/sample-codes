@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<form addrulepath="/components/com_scremation/models/fields">
+	<fieldset>
+       <field name="id" type="text" default="0" label="ID" readonly="true" class="readonly" description="ID" /> 
+
+       <field name="name" type="text" label="Your Name" description="Set Your Name" hint="Enter Name" required="true" size="35"/> 
+
+       <field name="email" type="email" label="Email" description="Set Email" hint="Enter Email" required="true" size="35"/> 
+
+       <field name="city" type="text" label="City" description="Set City" hint="Enter City" required="true" size="35"/> 
+
+       <field name="country" type="text" label="Country" description="Set Country" hint="Select Country" required="true" size="35"/> 
+
+       <field name="state" type="text" label="State" description="Set State" hint="Select State" required="true" size="35"/> 
+
+       <field name="message" type="textarea" label="Message" description="Set Message" hint="Enter Message" required="true" size="35"/> 
+
+       <field name="code" type="text" label="Security Check" description="Set Security Check" hint="Enter Security Check" required="true" size="35"/> 
+
+	</fieldset>
+
+</form>

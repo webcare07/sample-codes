@@ -1,0 +1,2823 @@
+<?php
+
+/*
+ * implements hook_men()
+ */
+function poc_assign_menu() {
+  $items['admin/assign/%'] = array(
+    'title'            => t('Event Assignments'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('poc_assign_assign_form', 2),
+    'access arguments' => array('manage event assignments'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['admin/payroll-hours/%'] = array(
+    'title'            => t('Payroll Hours'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('poc_assign_payroll_hours_form', 2),
+    'access arguments' => array('manage payroll hours'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['admin/user-event-ratings/%'] = array(
+    'title'            => t('User Event Ratings'),
+    'page callback'    => 'poc_assign_user_event_ratings',
+    'page arguments'   => array(2),
+    'access arguments' => array('manage event assignments'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['admin/timesheet/%'] = array(
+    'title'            => t('Timesheet'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('poc_assign_timesheet_form', 2),
+    'access arguments' => array('manage timesheets'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['driver/autocomplete'] = array(
+    'title'            => t('Autocomplete'),
+    'page callback'    => 'poc_assign_driver_autocomplete',
+    'page arguments'   => array(2, 3),
+    'access arguments' => array('manage timesheets'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['rate-user'] = array(
+    'title'            => t(''),
+    'page callback'    => 'poc_assign_rate_user',
+    'access arguments' => array('manage timesheets'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  $items['user/autocomplete'] = array(
+    'title'            => t('Autcomplete'),
+    'page callback'    => 'poc_assign_user_autocomplete',
+    'page arguments'   => array(2, 3),
+    'access arguments' => array('manage event assignments'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/*
+ * implements hook_permission()
+ */
+function poc_assign_permission() {
+  $items['manage event assignments'] = array(
+    'title'       => t('Manage event assignments'),
+    'description' => t(''),
+  );
+
+  $items['manage payroll hours'] = array(
+    'title'       => t('Manage payroll hours'),
+    'description' => t(''),
+  );
+
+  $items['manage timesheets'] = array(
+    'title'       => t('Manage timesheets'),
+    'description' => t(''),
+  );
+
+  return $items;
+}
+
+/*
+ * implements hook_theme()
+ */
+function poc_assign_theme($existing, $type, $theme, $path) {
+  $items = array();
+
+  $items['user_event_ratings'] = array(
+    'arguments' => array('data' => NULL),
+  );
+
+  return $items;
+}
+
+/*
+ * create event assignment form
+ */
+function poc_assign_assign_form($form, &$form_state, $event_nid = 0) {
+  $form = array();
+
+  if ($event_nid) {
+    $event_node = node_load($event_nid);
+    if ($event_node) {
+      if ($event_node->type == 'event') {
+        $language            = $event_node->language;
+        $branch_tid          = 0;
+        $client_uid          = 0;
+        $event_call_time_tid = 0;
+        $event_end_time_tid  = 0;
+        $default_notes       = '';
+        $event_date          = '';
+        $default_values      = array();
+        $replies             = array();
+        $clock               = poc_helper_convert_taxonomy_tree_to_array(variable_get('clock_taxonomy_vid'));
+        $positions           = poc_helper_get_positions();
+
+        if (isset($event_node->field_assignment_notes[$language][0]['value'])) {
+          $default_notes = $event_node->field_assignment_notes[$language][0]['value'];
+        }
+        if (isset($event_node->field_branch[$language][0]['tid'])) {
+          $branch_tid = $event_node->field_branch[$language][0]['tid'];
+        }
+        if (isset($event_node->field_call_time[$language][0]['tid'])) {
+          $event_call_time_tid = $event_node->field_call_time[$language][0]['tid'];
+        }
+        if (isset($event_node->field_client[$language][0]['target_id'])) {
+          $client_uid = $event_node->field_client[$language][0]['target_id'];
+        }
+        if (isset($event_node->field_date[$language][0]['value'])) {
+          $field_date_parts = explode(' ', $event_node->field_date[$language][0]['value']);
+          if (isset($field_date_parts[0])) {
+            $event_date = $field_date_parts[0];
+          }
+        }
+        if (isset($event_node->field_end_time[$language][0]['tid'])) {
+          $event_end_time_tid = $event_node->field_end_time[$language][0]['tid'];
+        }
+
+        // load default values
+        $sql = 'SELECT t.user_uid, t.position_tid, t.position_num, t.call_time, t.stop_time, t.note FROM {poc_event_timesheet} t WHERE t.event_nid = :nid';
+        $args = array(':nid' => $event_nid);
+        $result = db_query($sql, $args);
+        foreach ($result as $record) {
+          $default_values[$record->position_tid][$record->position_num] = array(
+            'user_uid' => $record->user_uid,
+            'call_time'  => $record->call_time,
+            'stop_time'  => $record->stop_time,
+            'note'       => $record->note,
+          );
+        }
+
+        // get sms replies for this event
+        if (function_exists('poc_sms_get_replies_for_event')) {
+          $replies = poc_sms_get_replies_for_event($event_nid);
+        }
+
+        // hidden event node id value
+        $form['event_nid'] = array(
+          '#type'  => 'hidden',
+          '#value' => $event_nid,
+        );
+
+        poc_assign_build_event_info_markup($event_node, $form, FALSE);
+        poc_assign_build_client_info_markup($client_uid, $form);
+
+        // build notes form
+        $form['miscellaneous'] = array(
+          '#type'        => 'fieldset',
+          '#title'       => t('notes'),
+          '#collapsible' => FALSE,
+          '#collapsed'   => FALSE,
+        );
+
+        $form['miscellaneous']['assignment_notes'] = array(
+          '#type'          => 'textarea',
+          '#default_value' => $default_notes,
+          '#cols'          => 60,
+          '#rows'          => 5,
+        );
+
+        // build assignments form
+        if (!empty($event_node->field_positions[$language][0]['value'])) {
+          $event_positions = unserialize($event_node->field_positions[$language][0]['value']);
+          foreach ($positions as $key => $position) {
+            if (isset($event_positions[$position['short_name']])) {
+              $positions[$key]['default_value'] = $event_positions[$position['short_name']];
+            }
+          }
+
+          $parent_fieldset_name = 'positions';
+          $form[$parent_fieldset_name] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t($parent_fieldset_name),
+            '#collapsible' => FALSE,
+            '#collapsed'   => FALSE,
+          );
+
+          foreach ($positions as $position) {
+            if ($position['default_value']) {
+              $max          = $position['default_value'];
+              $position_tid = $position['tid'];
+              $short_name   = $position['short_name'];
+
+              $child_fieldset_name = strtolower($position['title']);
+              $form[$parent_fieldset_name][$child_fieldset_name] = array(
+                '#type'        => 'fieldset',
+                '#title'       => t($child_fieldset_name),
+                '#collapsible' => TRUE,
+                '#collapsed'   => FALSE,
+              );
+
+              for ($i = 1; $i <= $max; $i++) {
+                $autocomplete_end_time   = '';
+                $autocomplete_parameters = '';
+                $autocomplete_start_time = '';
+                $default_call_time       = '';
+                $default_stop_time       = '';
+                $default_note            = '';
+                $default_reply           = '';
+                $default_user          = '';
+                $field_name_prefix       = 'position_' . $short_name . '_' . $i;
+                $query_start_hour        = '';
+                $query_end_hour          = '';
+
+                if (isset($default_values[$position_tid][$i]['call_time'])) {
+                  if (array_search($default_values[$position_tid][$i]['call_time'], $clock) !== FALSE) {
+                    $default_call_time = array_search($default_values[$position_tid][$i]['call_time'], $clock);
+                  }
+                }
+                else {
+                  $default_call_time = $event_call_time_tid;
+                }
+                if (isset($default_values[$position_tid][$i]['stop_time'])) {
+                  if (array_search($default_values[$position_tid][$i]['stop_time'], $clock) !== FALSE) {
+                    $default_stop_time = array_search($default_values[$position_tid][$i]['stop_time'], $clock);
+                  }
+                }
+                else {
+                  $default_stop_time = $event_end_time_tid;
+                }
+                if (isset($default_values[$position_tid][$i]['note'])) {
+                  $default_note = $default_values[$position_tid][$i]['note'];
+                }
+                if (!empty($default_values[$position_tid][$i]['user_uid'])) {
+                  $default_user = poc_assign_format_user_name_and_id($default_values[$position_tid][$i]['user_uid']);
+
+                  if (isset($replies[$position_tid][$i][$default_values[$position_tid][$i]['user_uid']])) {
+                    $default_reply = $replies[$position_tid][$i][$default_values[$position_tid][$i]['user_uid']];
+                  }
+                }
+
+                $autocomplete_start_time = $clock[$default_call_time];
+                $autocomplete_end_time   = $clock[$default_stop_time];
+                $autocomplete_parameters = $client_uid . '_' . $event_nid . '_' . $branch_tid . '_' . $event_date . '_' . poc_helper_convert_hour_from_am_to_24($autocomplete_start_time) . '_' . poc_helper_convert_hour_from_am_to_24($autocomplete_end_time);
+
+                $form[$parent_fieldset_name][$child_fieldset_name][$field_name_prefix . '_uid'] = array(
+                  '#type'              => 'textfield',
+                  '#title'             => $i,
+                  '#size'              => 50,
+                  '#maxlength'         => 100,
+                  '#autocomplete_path' => 'user/autocomplete/' . $autocomplete_parameters,
+                  '#default_value'     => $default_user,
+                  '#prefix'            => '<div class="position-entry">',
+                );
+
+                $form[$parent_fieldset_name][$child_fieldset_name][$field_name_prefix . '_call'] = array(
+                  '#type'          => 'select',
+                  '#title'         => t('Call Time'),
+                  '#options'       => taxonomy_allowed_values(field_info_field('field_call_time')),
+                  '#default_value' => $default_call_time,
+                );
+
+                $form[$parent_fieldset_name][$child_fieldset_name][$field_name_prefix . '_stop'] = array(
+                  '#type'          => 'select',
+                  '#title'         => t('End Time'),
+                  '#options'       => taxonomy_allowed_values(field_info_field('field_call_time')),
+                  '#default_value' => $default_stop_time,
+                );
+
+                $form[$parent_fieldset_name][$child_fieldset_name][$field_name_prefix . '_note'] = array(
+                  '#type'          => 'textfield',
+                  '#title'         => t('Note'),
+                  '#size'          => 20,
+                  '#maxlength'     => 100,
+                  '#default_value' => $default_note,
+                );
+
+                $form[$parent_fieldset_name][$child_fieldset_name][$field_name_prefix . '_reply'] = array(
+                  '#type'          => 'textfield',
+                  '#title'         => t('Reply'),
+                  '#size'          => 25,
+                  '#default_value' => $default_reply,
+                  '#disabled'      => TRUE,
+                  '#suffix'        => '</div>',
+                );
+              }
+            }
+
+            $form['submit'] = array(
+              '#type'  => 'submit',
+              '#value' => 'Update',
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return $form;
+}
+
+/*
+ * submit event assignmemt form
+ */
+function poc_assign_assign_form_submit($form, &$form_state) {
+  $data       = array();
+  $items      = array();
+  $item_keys  = array();
+  $event_nid  = intval($form_state['values']['event_nid']);
+  $event_node = node_load($event_nid);
+  $language   = $event_node->language;
+  $clock      = poc_helper_convert_taxonomy_tree_to_array(variable_get('clock_taxonomy_vid'));
+  $positions  = poc_helper_get_positions();
+
+  // get default rates from client profile
+  if (isset($event_node->field_client[$language][0]['target_id'])) {
+    $client_uid = $event_node->field_client[$language][0]['target_id'];
+    $client = user_load($client_uid);
+
+    if (!empty($client->field_rates[$language][0]['value'])) {
+      $default_rates = unserialize($client->field_rates[$language][0]['value']);
+      if ($default_rates !== FALSE) {
+        if (is_array($default_rates)) {
+          poc_helper_set_default_position_rates($positions, $default_rates);
+        }
+        else {
+          watchdog('poc_assign', 'Field Rates for user ' . $client_uid . ' is of wrong type.', NULL, WATCHDOG_NOTICE);
+        }
+      }
+    }
+  }
+
+  // update assignment notes
+  // update break length, spread of hour rates, terms if they are empty
+  if (isset($form_state['values']['assignment_notes'])) {
+    $event_node->field_assignment_notes[$language][0]['value'] = $form_state['values']['assignment_notes'];
+  }
+  if (empty($event_node->field_break_length[$language][0]['value'])) {
+    $event_node->field_break_length[$language][0]['value'] = '30';
+  }
+  if (empty($event_node->field_soh_billing_rate[$language][0]['value'])) {
+    $event_node->field_soh_billing_rate[$language][0]['value'] = variable_get('spread_of_hours_billing_rate', '');
+  }
+  if (empty($event_node->field_soh_pay_rate[$language][0]['value'])) {
+    $event_node->field_soh_pay_rate[$language][0]['value'] = variable_get('spread_of_hours_pay_rate', '');
+  }
+  if (empty($event_node->field_terms[$language][0]['value'])) {
+    if (!empty($client->field_terms[$language][0]['value'])) {
+      $event_node->field_terms[$language][0]['value'] = $client->field_terms[$language][0]['value'];
+    }
+  }
+  node_save($event_node);
+
+  // parse form values
+  foreach ($form_state['values'] as $key => $value) {
+    $key_parts = explode('_', $key);
+    if (!empty($key_parts[0]) && !empty($key_parts[1]) && !empty($key_parts[2]) && !empty($key_parts[3])) {
+      if (($key_parts[0] == 'position') && ctype_alpha($key_parts[1]) && ctype_digit($key_parts[2])) {
+        $index = $key_parts[1] . '_' . $key_parts[2];
+        switch ($key_parts[3]) {
+          case 'call':
+            $data[$index]['call_time_tid'] = $value;
+            break;
+          case 'stop':
+            $data[$index]['stop_time_tid'] = $value;
+            break;
+          case 'note':
+            $data[$index]['note'] = $value;
+            break;
+          case 'uid':
+            $data[$index]['user_uid'] = $value;
+            break;
+        }
+      }
+    }
+  }
+
+  // re-arrange form values so they can be sorted
+  foreach ($data as $key => $value) {
+    $key_parts    = explode('_', $key);
+    $position_tid = 0;
+    $call_time    = '';
+    $note         = '';
+    $stop_time    = '';
+    $user_name  = '';
+    $user_uid   = '';
+
+    if (!empty($key_parts[0])) {
+      $position_tid = poc_helper_get_position_tid_by_short_name($positions, $key_parts[0]);
+    }
+    if (!empty($value['user_uid'])) {
+      $open_bracket_pos = strpos($value['user_uid'], '[');
+      $close_bracket_pos = strpos($value['user_uid'], ']');
+      if ($open_bracket_pos !== FALSE) {
+        $user_name = substr($value['user_uid'], 0, $open_bracket_pos - 1);
+        if ($close_bracket_pos !== FALSE) {
+          $user_uid = substr($value['user_uid'], $open_bracket_pos + 1, $close_bracket_pos - $open_bracket_pos - 1);
+        }
+      }
+    }
+    if (isset($clock[$value['call_time_tid']])) {
+      $call_time = $clock[$value['call_time_tid']];
+    }
+    if (isset($clock[$value['stop_time_tid']])) {
+      $stop_time = $clock[$value['stop_time_tid']];
+    }
+    if (isset($value['note'])) {
+      $note = $value['note'];
+    }
+
+    if (($position_tid) && ($user_name) && ($user_uid) && ($call_time)) {
+      if (array_search($position_tid, $item_keys) === FALSE) {
+        $item_keys[] = $position_tid;
+      }
+      $items[$position_tid][$user_name] = array(
+        'user_uid' => $user_uid,
+        'call_time'  => $call_time,
+        'stop_time'  => $stop_time,
+        'note'       => $note,
+      );
+    }
+  }
+
+  foreach ($item_keys as $item_key) {
+    ksort($items[$item_key]);
+  }
+
+  // update database
+  db_delete('poc_event_timesheet')
+    ->condition('event_nid', $event_nid)
+    ->execute();
+
+  foreach ($item_keys as $position_tid) {
+    $billing_rate    = '';
+    $pay_rate        = '';
+    $position_number = 0;
+
+    foreach ($positions as $position) {
+      if ($position['tid'] == $position_tid) {
+        $billing_rate = $position['default_billing_rate'];
+        $pay_rate = $position['default_pay_rate'];
+        break;
+      }
+    }
+
+    foreach ($items[$position_tid] as $value) {
+      $position_number++;
+      $fields = array(
+        'event_nid'    => $event_nid,
+        'position_tid' => $position_tid,
+        'position_num' => $position_number,
+        'user_uid'   => $value['user_uid'],
+        'call_time'    => $value['call_time'],
+        'billing_rate' => $billing_rate,
+        'pay_rate'     => $pay_rate,
+        'timestamp'    => REQUEST_TIME,
+      );
+
+      if (!empty($value['stop_time'])) {
+        $fields['stop_time'] = $value['stop_time'];
+      }
+      if (!empty($value['note'])) {
+        $fields['note'] = $value['note'];
+      }
+
+      db_insert('poc_event_timesheet')
+        ->fields($fields)
+        ->execute();
+
+      // delete corresponding sms queue entry if user user id does not match
+      // which implies assignment has changed
+      if (db_table_exists('poc_sms_queue')) {
+        db_delete('poc_sms_queue')
+          ->condition('event_nid', $event_nid)
+          ->condition('position_tid', $position_tid)
+          ->condition('position_num', $position_number)
+          ->condition('user_uid', $value['user_uid'], '<>')
+          ->execute();
+      }
+    }
+  }
+
+  drupal_set_message(t('The assignments have been updated.'), 'status');
+}
+
+/*
+ * create event timesheet form
+ */
+function poc_assign_timesheet_form($form, &$form_state, $event_nid = 0) {
+  global $user;
+
+  $timesheet_access = poc_helper_check_timesheet_access($event_nid, $user);
+  if (!$timesheet_access) {
+    drupal_goto(variable_get('site_403'));
+  }
+
+  $form = array();
+
+  $is_accountant = poc_helper_is_accountant($user);
+  $is_admin      = poc_helper_is_admin($user);
+  $is_client     = poc_helper_is_client($user);
+  $is_operation  = poc_helper_is_operation($user);
+  $is_supervisor = poc_helper_is_supervisor($user);
+
+  if ($event_nid) {
+    $event_node = node_load($event_nid);
+    if ($event_node) {
+      if ($event_node->type == 'event') {
+        $language            = $event_node->language;
+        $balance             = 0;
+        $car_expense         = 0;
+        $client_uid          = 0;
+        $credits             = 0;
+        $grand_total         = 0;
+        $miscellaneous_total = 0;
+        $other_expense       = 0;
+        $row                 = 0;
+        $staffing_total      = 0;
+        $travel_expense      = 0;
+        $due_date            = '';
+        $event_name          = '';
+        $event_status        = '';
+        $invoice_date        = '';
+        $invoice_number      = '';
+        $terms               = '';
+        $timesheet_notes     = '';
+        $upload_fid          = '';
+        $upload_filename     = '';
+        $upload_url          = '';
+        $break_length        = '30';
+        $assignments         = array();
+        $drivers             = array();
+        $event_position_tids = array();
+        $invoice_items       = array();
+        $clock               = poc_helper_convert_taxonomy_tree_to_array(variable_get('clock_taxonomy_vid'), FALSE);
+        $positions           = poc_helper_get_positions();
+        $invoiced_tid        = variable_get('event_status_invoiced_tid');
+        $soh_billing_rate    = variable_get('spread_of_hours_billing_rate');
+
+        // get event properties
+        if (isset($event_node->field_break_length[$language][0]['value'])) {
+          $break_length = $event_node->field_break_length[$language][0]['value'];
+        }
+        if (isset($event_node->field_client[$language][0]['target_id'])) {
+          $client_uid = $event_node->field_client[$language][0]['target_id'];
+        }
+        if (isset($event_node->field_credits[$language][0]['value'])) {
+          $credits = $event_node->field_credits[$language][0]['value'];
+        }
+        if (isset($event_node->field_due_date[$language][0]['value'])) {
+          $due_date = date('n/j/Y', strtotime($event_node->field_due_date[$language][0]['value']));
+        }
+        if (isset($event_node->field_event_name[$language][0]['value'])) {
+          $event_name = $event_node->field_event_name[$language][0]['value'];
+        }
+        if (isset($event_node->field_event_status[$language][0]['tid'])) {
+          $event_status = $event_node->field_event_status[$language][0]['tid'];
+        }
+        if (isset($event_node->field_invoice_number[$language][0]['value'])) {
+          $invoice_number = $event_node->field_invoice_number[$language][0]['value'];
+        }
+        if (isset($event_node->field_invoice_date[$language][0]['value'])) {
+          $invoice_date = date('n/j/Y', strtotime($event_node->field_invoice_date[$language][0]['value']));
+        }
+        if (isset($event_node->field_other_expense[$language][0]['value'])) {
+          $other_expense = $event_node->field_other_expense[$language][0]['value'];
+        }
+        if (isset($event_node->field_soh_billing_rate[$language][0]['value'])) {
+          $soh_billing_rate = $event_node->field_soh_billing_rate[$language][0]['value'];
+        }
+        if (isset($event_node->field_terms[$language][0]['value'])) {
+          $terms = $event_node->field_terms[$language][0]['value'];
+        }
+        if (isset($event_node->field_timesheet_fid[$language][0]['value'])) {
+          $upload_fid = $event_node->field_timesheet_fid[$language][0]['value'];
+          if ($upload_fid) {
+            $file = file_load($upload_fid);
+            $upload_filename = $file->filename;
+            $upload_url = file_create_url($file->uri);
+          }
+        }
+        if (isset($event_node->field_timesheet_notes[$language][0]['value'])) {
+          $timesheet_notes = $event_node->field_timesheet_notes[$language][0]['value'];
+        }
+        if (isset($event_node->field_travel_expense[$language][0]['value'])) {
+          $travel_expense = $event_node->field_travel_expense[$language][0]['value'];
+        }
+
+        // add js and css to form
+        if ($is_admin || $is_accountant || $is_client || $is_operation) {
+          $js = 'var breakLength = ' . $break_length . ';' . "\n";
+
+          if (is_numeric($soh_billing_rate)) {
+            $js .= 'var sohRate = ' . $soh_billing_rate . ';' . "\n";
+          }
+          else {
+            watchdog('poc_assign', 'Persistent variable spread_of_hours_billing_rate is invalid: timesheet-form.js may not work properly.', NULL, WATCHDOG_NOTICE);
+          }
+
+          drupal_add_js($js, 'inline');
+        }
+        drupal_add_css(drupal_get_path('module', 'poc_helper') . '/css/admin.css');
+
+        // add jquery library bar rating
+        drupal_add_js(libraries_get_path('jquery-bar-rating') . '/dist/jquery.barrating.min.js');
+        drupal_add_css(libraries_get_path('jquery-bar-rating') . '/dist/themes/css-stars.css');
+
+        // hidden form fields
+        $form['event_nid'] = array(
+          '#type' => 'hidden',
+          '#value' => $event_nid,
+        );
+        $form['client_uid'] = array(
+          '#type' => 'hidden',
+          '#value' => $client_uid,
+        );
+
+        poc_assign_build_event_info_markup($event_node, $form, TRUE);
+
+        // load default values from database
+        $sql = 'SELECT a.user_uid, a.position_tid, a.position_num, a.call_time, a.stop_time, a.note, a.start_time, a.end_time, a.break, a.spread_of_hours, a.billing_rate, a.grade, a.internal_grade, a.preferred, a.disapproved FROM {poc_event_timesheet} a WHERE a.event_nid = :nid';
+        $args = array(':nid' => $event_nid);
+        $result = db_query($sql, $args);
+        foreach ($result as $record) {
+          $assignments[$record->position_tid][$record->position_num] = array(
+            'user_uid'      => $record->user_uid,
+            'call_time'       => $record->call_time,
+            'stop_time'       => $record->stop_time,
+            'note'            => $record->note,
+            'start_time'      => $record->start_time,
+            'end_time'        => $record->end_time,
+            'break'           => $record->break,
+            'spread_of_hours' => $record->spread_of_hours,
+            'billing_rate'    => $record->billing_rate,
+            'grade'           => $record->grade,
+            'internal_grade'  => $record->internal_grade,
+            'preferred'       => $record->preferred,
+            'disapproved'     => $record->disapproved,
+          );
+
+          if ((empty($event_position_tids)) || (array_search($record->position_tid, $event_position_tids) === FALSE)) {
+            $event_position_tids[] = $record->position_tid;
+          }
+        }
+
+        $sql = 'SELECT i.date, i.item, i.description, i.rate, i.quantity FROM {poc_event_invoice_item} i WHERE i.event_nid = :nid';
+        $result = db_query($sql, $args);
+        foreach ($result as $record) {
+          $total = 0;
+          if (!empty($record->rate) && !empty($record->quantity)) {
+            if (is_numeric($record->rate) && is_numeric($record->quantity)) {
+              $total = $record->rate * $record->quantity;
+              $miscellaneous_total += $total;
+            }
+          }
+
+          $invoice_items[] = array(
+            'date'        => $record->date,
+            'item'        => $record->item,
+            'description' => $record->description,
+            'rate'        => $record->rate,
+            'quantity'    => $record->quantity,
+            'total'       => $total,
+          );
+        }
+
+        $sql = 'SELECT e.user_uid, e.amount FROM {poc_event_expense_item} e WHERE e.event_nid = :nid';
+        $result = db_query($sql, $args);
+        foreach ($result as $record) {
+          if (!empty($record->amount)) {
+            if (is_numeric($record->amount)) {
+              $car_expense += $record->amount;
+            }
+          }
+
+          $drivers[] = array(
+            'user_uid' => $record->user_uid,
+            'amount' => $record->amount,
+          );
+        }
+
+        if (empty($form_state['number_of_miscellaneous_items'])) {
+          if (!empty($invoice_items)) {
+            $form_state['number_of_miscellaneous_items'] = count($invoice_items);
+          }
+          else {
+            $form_state['number_of_miscellaneous_items'] = 1;
+          }
+        }
+
+        if (empty($form_state['number_of_drivers'])) {
+          if (!empty($drivers)) {
+            $form_state['number_of_drivers'] = count($drivers);
+          }
+          else {
+            $form_state['number_of_drivers'] = 1;
+          }
+        }
+
+        // build timesheet form
+
+        // staffing
+        if ($is_admin || $is_accountant || $is_client || $is_operation || $is_supervisor) {
+          $disabled = FALSE;
+          if (($is_client || $is_supervisor) && ($event_status == $invoiced_tid)) {
+            $disabled = TRUE;
+          }
+
+          foreach ($event_position_tids as $tid) {
+            $fieldset_name = '';
+            $position_short_name = '';
+
+            foreach ($positions as $position) {
+              if ($position['tid'] == $tid) {
+                $fieldset_name = $position['title'];
+                $position_short_name = $position['short_name'];
+                break;
+              }
+            }
+
+            if ($fieldset_name) {
+              // check to see if note is populated
+              // if not, hide the column to save space
+              $has_note = FALSE;
+              foreach ($assignments[$tid] as $position_number => $assignment) {
+                if ($assignment['note']) {
+                  $has_note = TRUE;
+                  break;
+                }
+              }
+
+              $form[$fieldset_name] = array(
+                '#type'        => 'fieldset',
+                '#title'       => t($fieldset_name),
+                '#attributes'  => array('fieldset-type' => 'position'),
+                '#collapsible' => TRUE,
+                '#collapsed'   => FALSE,
+              );
+
+              $markup  = '<table class="timesheet-form-table"><thead><tr>';
+              $markup .= '<th class="col-num">#</th>';
+              $markup .= '<th class="col-photo"></th>';
+
+              if ($has_note) {
+                $markup .= '<th class="col-note">Note</th>';
+              }
+
+              $markup .= '<th class="col-in">In</th>';
+              $markup .= '<th class="col-out">Out</th>';
+              $markup .= '<th class="col-break" title="' . $break_length . ' Minutes Break">Break</th>';
+              $markup .= '<th class="col-soh" title="Spread of Hours">SoH</th>';
+              if ($is_admin || $is_accountant || $is_client || $is_operation) {
+                $markup .= '<th class="col-rate">Rate</th>';
+              }
+              $markup .= '<th class="col-hours">Hours</th>';
+              if ($is_admin || $is_accountant || $is_client || $is_operation) {
+                $markup .= '<th class="col-total">Total</th>';
+              }
+              if ($is_admin || $is_client || $is_operation || $is_supervisor) {
+                $markup .= '<th class="col-ext-grade">Grade</th>';
+                if ($is_admin || $is_operation) {
+                  $markup .= '<th class="col-int-grade">Internal Grade</th>';
+                }
+                $markup .= '<th class="col-req" title="Request for Future Events">REQ</th>';
+                $markup .= '<th class="col-dnu" title="Do Not Use">DNU</th>';
+              }
+              $markup .= '</tr></thead>';
+
+              $form[$fieldset_name][$fieldset_name . '_table_header'] = array(
+                '#markup' => $markup,
+                '#attached' => array(
+                  'library' => array(
+                    array('system', 'ui.tooltip'),
+                  ),
+                ),
+              );
+
+              foreach ($assignments[$tid] as $position_number => $assignment) {
+                $billing_rate           = 0;
+                $default_hours          = 0;
+                $default_total          = 0;
+                $default_end_time       = '';
+                $default_grade          = '';
+                $default_internal_grade = '';
+                $default_start_time     = '';
+                $note                   = '';
+                $rate_markup            = '';
+                $user_name            = '';
+                $user_photo           = '';
+                $spread_of_hours        = FALSE;
+                $field_name_prefix      = 'position_' . $position_short_name . '_' . $position_number;
+                $row_class              = 'odd';
+                $user                 = user_load($assignment['user_uid']);
+                $row++;
+
+                if (($position_number % 2) == 0) {
+                  $row_class = 'even';
+                }
+
+                if (isset($assignment['billing_rate'])) {
+                  if (is_numeric($assignment['billing_rate'])) {
+                    $billing_rate = $assignment['billing_rate'];
+                  }
+                }
+                if (isset($assignment['grade'])) {
+                  $default_grade = $assignment['grade'];
+                }
+                if (isset($assignment['internal_grade'])) {
+                  $default_internal_grade = $assignment['internal_grade'];
+                }
+                if (isset($assignment['spread_of_hours'])) {
+                  if ($assignment['spread_of_hours']) {
+                    $spread_of_hours = TRUE;
+                  }
+                }
+                if (isset($assignment['start_time'])) {
+                  $default_start_time = $assignment['start_time'];
+                }
+                elseif (isset($assignment['call_time'])) {
+                  $default_start_time = $assignment['call_time'];
+                }
+                if (isset($assignment['end_time'])) {
+                  $default_end_time = $assignment['end_time'];
+                }
+                elseif (isset($assignment['stop_time'])) {
+                  $default_end_time = $assignment['stop_time'];
+                }
+                if (isset($user->field_address[$language][0]['name_line'])) {
+                  $user_name = $user->field_address[$language][0]['name_line'];
+                }
+                if (isset($user->picture->uri)) {
+                  $user_photo = file_create_url($user->picture->uri);
+                }
+
+                $default_hours = poc_helper_calculate_time_delta($default_start_time, $default_end_time, $assignment['break'], $break_length);
+                $default_total = $billing_rate * $default_hours;
+                if ($spread_of_hours) {
+                  $default_total += $soh_billing_rate;
+                }
+                $staffing_total += $default_total;
+
+                // hidden form field
+                $form[$field_name_prefix . '_uid'] = array(
+                  '#type' => 'hidden',
+                  '#value' => $assignment['user_uid'],
+                );
+
+                $form[$fieldset_name][$field_name_prefix . '_row_num'] = array(
+                  '#markup' => '<tr class="' . $row_class . '"><td>' . $position_number . '</td>',
+                );
+                $form[$fieldset_name][$field_name_prefix . '_photo'] = array(
+                  '#markup' => '<td><img src="' . $user_photo . '" alt="' . htmlspecialchars($user_name, ENT_QUOTES) . '"><div>' . $user_name . '</div></td>',
+                );
+
+                if ($has_note) {
+                  $form[$fieldset_name][$field_name_prefix . '_note'] = array(
+                    '#markup' => '<td>' . $assignment['note'] . '</td>',
+                  );
+                }
+
+                $form[$fieldset_name][$field_name_prefix . '_start'] = array(
+                  '#type'          => 'select',
+                  '#title'         => t(''),
+                  '#options'       => $clock,
+                  '#default_value' => $default_start_time,
+                  '#attributes'    => array('row-num' => $row, 'cell-type' => 'start-time'),
+                  '#prefix'        => '<td><span class="col-label">In</span>',
+                  '#suffix'        => '</td>',
+                  '#disabled'      => $disabled,
+                );
+
+                $form[$fieldset_name][$field_name_prefix . '_end'] = array(
+                  '#type'          => 'select',
+                  '#title'         => t(''),
+                  '#options'       => $clock,
+                  '#default_value' => $default_end_time,
+                  '#attributes'    => array('row-num' => $row, 'cell-type' => 'end-time'),
+                  '#prefix'        => '<td><span class="col-label">Out</span>',
+                  '#suffix'        => '</td>',
+                  '#disabled'      => $disabled,
+                );
+
+                $form[$fieldset_name][$field_name_prefix . '_break'] = array(
+                  '#type'          => 'checkbox',
+                  '#title'         => t(''),
+                  '#default_value' => $assignment['break'],
+                  '#attributes'    => array('row-num' => $row, 'cell-type' => 'break'),
+                  '#prefix'        => '<td><span class="col-label">Break</span>',
+                  '#suffix'        => '</td>',
+                  '#disabled'      => $disabled,
+                );
+
+                $form[$fieldset_name][$field_name_prefix . '_soh'] = array(
+                  '#type'          => 'checkbox',
+                  '#title'         => t(''),
+                  '#default_value' => $assignment['spread_of_hours'],
+                  '#attributes'    => array('row-num' => $row, 'cell-type' => 'soh'),
+                  '#prefix'        => '<td><span class="col-label">SOH</span>',
+                  '#suffix'        => '</td>',
+                  '#disabled'      => $disabled,
+                );
+
+                if ($is_admin || $is_accountant || $is_client || $is_operation) {
+                  $form[$fieldset_name][$field_name_prefix . '_rate'] = array(
+                    '#markup' => '<td><span class="col-label">Rate</span><div class="form-item">' . number_format((float)$assignment['billing_rate'], 2) . '</div></td>',
+                  );
+                }
+
+                $form[$fieldset_name][$field_name_prefix . '_hours'] = array(
+                  '#type'          => 'textfield',
+                  '#title'         => t(''),
+                  '#size'          => 2,
+                  '#maxlength'     => 10,
+                  '#default_value' => $default_hours,
+                  '#attributes'    => array('row-num' => $row, 'cell-type' => 'hours'),
+                  '#disabled'      => TRUE,
+                  '#prefix'        => '<td><span class="col-label">Hours</span>',
+                  '#suffix'        => '</td>',
+                );
+
+                if ($is_admin || $is_accountant || $is_client || $is_operation) {
+                  $form[$fieldset_name][$field_name_prefix . '_total'] = array(
+                    '#type'          => 'textfield',
+                    '#title'         => t(''),
+                    '#size'          => 7,
+                    '#maxlength'     => 10,
+                    '#default_value' => number_format((float)$default_total, 2),
+                    '#attributes'    => array('row-num' => $row, 'cell-type' => 'row-total', 'rate' => $billing_rate),
+                    '#disabled'      => TRUE,
+                    '#prefix'        => '<td><span class="col-label">Total</span>',
+                    '#suffix'        => '</td>',
+                  );
+                }
+
+                if ($is_admin || $is_client || $is_operation || $is_supervisor) {
+                  $markup  = '<select class="stars-rating">';
+                  $markup .= '<option value=""></option>';
+                  for ($i = 1; $i <= 5; $i++) {
+                    if (($i == $default_grade) || (($i == 4) && (empty($default_grade)))) {
+                      $markup .= '<option value="' . $event_nid .'-' . $tid . '-' . $position_number . '-' . $i . '" selected>' . $i . '</option>';
+                    }
+                    else {
+                      $markup .= '<option value="' . $event_nid .'-' . $tid . '-' . $position_number . '-' . $i . '">' . $i . '</option>';
+                    }
+                  }
+                  $markup .= '</select>';
+
+                  $form[$fieldset_name][$field_name_prefix . '_grade'] = array(
+                    '#markup' => $markup,
+                    '#prefix' => '<td cell-data="' . $event_nid .'-' . $tid . '-' . $position_number . '-0"><span class="col-label">Grade</span>',
+                    '#suffix' => '</td>',
+                  );
+
+                  if ($is_admin || $is_operation) {
+                    $markup  = '<select class="stars-rating" cell-data>';
+                    $markup .= '<option value=""></option>';
+                    for ($i = 1; $i <= 5; $i++) {
+                      if ($i == $default_internal_grade) {
+                        $markup .= '<option value="' . $event_nid .'-' . $tid . '-' . $position_number . '-' . $i . '-i" selected>' . $i . '</option>';
+                      }
+                      else {
+                        $markup .= '<option value="' . $event_nid .'-' . $tid . '-' . $position_number . '-' . $i . '-i">' . $i . '</option>';
+                      }
+                    }
+                    $markup .= '</select>';
+
+                    $form[$fieldset_name][$field_name_prefix . '_internal_grade'] = array(
+                      '#markup' => $markup,
+                      '#prefix' => '<td cell-data="' . $event_nid .'-' . $tid . '-' . $position_number . '-0-i">',
+                      '#suffix' => '</td>',
+                    );
+                  }
+
+                  $form[$fieldset_name][$field_name_prefix . '_preferred'] = array(
+                    '#type'          => 'checkbox',
+                    '#title'         => t(''),
+                    '#default_value' => $assignment['preferred'],
+                    '#attributes'    => array('row-num' => $row, 'cell-type' => 'preferred'),
+                    '#prefix'        => '<td><span class="col-label">REQ</span>',
+                    '#suffix'        => '</td>',
+                  );
+
+                  $form[$fieldset_name][$field_name_prefix . '_disapproved'] = array(
+                    '#type'          => 'checkbox',
+                    '#title'         => t(''),
+                    '#default_value' => $assignment['disapproved'],
+                    '#attributes'    => array('row-num' => $row, 'cell-type' => 'disapproved'),
+                    '#prefix'        => '<td><span class="col-label">DNU</span>',
+                    '#suffix'        => '</td>',
+                  );
+                }
+
+                $form[$fieldset_name][$field_name_prefix . '_row_end'] = array(
+                  '#markup' => '</tr>',
+                );
+              }
+
+              $form[$fieldset_name][$fieldset_name . '_table_end'] = array(
+                '#markup' => '</table>',
+              );
+            }
+          }
+        }
+
+        // miscellaneous items
+        if ($is_admin || $is_accountant || $is_client || $is_operation) {
+          $disabled = FALSE;
+          if ($is_client || $is_operation) {
+            $disabled = TRUE;
+          }
+
+          $fieldset_name = 'miscellaneous';
+          $form[$fieldset_name] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t(ucwords($fieldset_name)),
+            '#collapsible' => TRUE,
+            '#collapsed'   => FALSE,
+            '#prefix'      => '<div id="misc-fieldset-wrapper">',
+            '#suffix'      => '</div>',
+          );
+
+          $markup  = '<table class="misc-item-table"><thead><tr>';
+          $markup .= '<th>#</th>';
+          $markup .= '<th class="th-data">Date</th>';
+          $markup .= '<th class="th-data">Item</th>';
+          $markup .= '<th class="th-data">Description</th>';
+          $markup .= '<th class="th-data">Rate</th>';
+          $markup .= '<th class="th-data">Quantity</th>';
+          $markup .= '<th class="th-data">Total</th>';
+          $markup .= '</tr></thead>';
+
+          $form[$fieldset_name][$fieldset_name . '_table_header'] = array(
+            '#markup' => $markup,
+          );
+
+          for ($i = 1; $i <= $form_state['number_of_miscellaneous_items']; $i++) {
+            $field_name_prefix   = 'misc_item_' . $i;
+            $default_date        = '';
+            $default_item        = '';
+            $default_description = '';
+            $default_rate        = '';
+            $default_quantity    = '';
+            $default_total       = '';
+            $index               = $i - 1;
+            $row++;
+
+            if (isset($invoice_items[$index])) {
+              $default_date        = $invoice_items[$index]['date'];
+              $default_item        = $invoice_items[$index]['item'];
+              $default_description = $invoice_items[$index]['description'];
+              $default_rate        = $invoice_items[$index]['rate'];
+              $default_quantity    = $invoice_items[$index]['quantity'];
+              $default_total       = $invoice_items[$index]['total'];
+            }
+
+            $form[$fieldset_name][$field_name_prefix . '_row_num'] = array(
+              '#markup' => '<tr><td>' . $i . '</td>',
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_date'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => $default_date,
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td>',
+              '#disabled'      => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_item'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 20,
+              '#maxlength'     => 80,
+              '#default_value' => $default_item,
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td>',
+              '#disabled'      => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_desc'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 20,
+              '#maxlength'     => 80,
+              '#default_value' => $default_description,
+              '#disabled'      => $is_client,
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td>',
+              '#disabled'      => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_rate'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => number_format((float)$default_rate, 2),
+              '#attributes'    => array('row-num' => $row, 'cell-type' => 'rate'),
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td>',
+              '#disabled'      => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_quantity'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => $default_quantity,
+              '#attributes'    => array('row-num' => $row, 'cell-type' => 'quantity'),
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td>',
+              '#disabled'      => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_total'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => number_format((float)$default_total, 2),
+              '#attributes'    => array('row-num' => $row, 'cell-type' => 'misc-row-total'),
+              '#prefix'        => '<td class="td-data">',
+              '#suffix'        => '</td></tr>',
+              '#disabled'      => TRUE,
+            );
+          }
+
+          $form[$fieldset_name][$fieldset_name . '_table_footer'] = array(
+            '#markup' => '</table>',
+          );
+
+          if ($is_admin || $is_accountant) {
+            $form[$fieldset_name][$fieldset_name . '_add_button'] = array(
+              '#type'   => 'submit',
+              '#value'  => t('Add Row'),
+              '#name'   => $fieldset_name . '_add_button',
+              '#submit' => array('poc_assign_add_miscellaneous_item_row'),
+              '#ajax'   => array(
+                'callback' => 'poc_assign_add_miscellaneous_item_row_callback',
+                'wrapper'  => 'misc-fieldset-wrapper',
+              ),
+            );
+          }
+        }
+
+        // drivers
+        if ($is_admin || $is_accountant || $is_client || $is_operation) {
+          $disabled = FALSE;
+          if ($is_client) {
+            $disabled = TRUE;
+          }
+
+          $fieldset_name = 'drivers';
+          $form[$fieldset_name] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t(ucwords($fieldset_name)),
+            '#collapsible' => TRUE,
+            '#collapsed'   => FALSE,
+            '#prefix'      => '<div id="drivers-fieldset-wrapper">',
+            '#suffix'      => '</div>',
+          );
+
+          $markup  = '<table class="drivers-table"><thead><tr>';
+          $markup .= '<th>#</th>';
+          $markup .= '<th class="driver">Driver</th>';
+          $markup .= '<th class="amount">Amount</th>';
+          $markup .= '</tr></thead>';
+
+          $form[$fieldset_name][$fieldset_name . '_table_header'] = array(
+            '#markup' => $markup,
+          );
+
+          for ($i = 1; $i <= $form_state['number_of_drivers']; $i++) {
+            $field_name_prefix = 'driver_' . $i;
+            $default_driver    = '';
+            $default_amount    = '';
+            $index             = $i - 1;
+
+            if (isset($drivers[$index])) {
+              $default_driver = poc_assign_format_user_name_and_id($drivers[$index]['user_uid']);
+              $default_amount = $drivers[$index]['amount'];
+            }
+
+            $form[$fieldset_name][$field_name_prefix . '_row_num'] = array(
+              '#markup' => '<tr><td>' . $i . '</td>',
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_uid'] = array(
+              '#type'              => 'textfield',
+              '#size'              => 50,
+              '#maxlength'         => 100,
+              '#autocomplete_path' => 'driver/autocomplete/' . $event_nid,
+              '#default_value'     => $default_driver,
+              '#prefix'            => '<td class="driver">',
+              '#suffix'            => '</td>',
+              '#disabled'          => $disabled,
+            );
+
+            $form[$fieldset_name][$field_name_prefix . '_amount'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t(''),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => number_format((float)$default_amount, 2),
+              '#attributes'    => array('cell-type' => 'expense'),
+              '#prefix'        => '<td class="amount">',
+              '#suffix'        => '</td></tr>',
+              '#disabled'      => $disabled,
+            );
+          }
+
+          $form[$fieldset_name][$fieldset_name . '_table_footer'] = array(
+            '#markup' => '</table>',
+          );
+
+          if ($is_admin || $is_accountant || $is_operation) {
+            $form[$fieldset_name][$fieldset_name . '_add_button'] = array(
+              '#type'   => 'submit',
+              '#value'  => t('Add Row'),
+              '#name'   => $fieldset_name . '_add_button',
+              '#submit' => array('poc_assign_add_driver_row'),
+              '#ajax'   => array(
+                'callback' => 'poc_assign_add_driver_row_callback',
+                'wrapper'  => 'drivers-fieldset-wrapper',
+              ),
+            );
+          }
+        }
+
+        // invoice info
+        if ($is_admin || $is_accountant || $is_client || $is_operation) {
+          $fieldset_name = 'invoice_info';
+          $disabled = FALSE;
+
+          if ($is_client || $is_operation) {
+            $disabled = TRUE;
+          }
+
+          $form[$fieldset_name] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t('Invoice Information'),
+            '#attributes'  => array('class' => array('flexible-width')),
+            '#collapsible' => TRUE,
+            '#collapsed'   => FALSE,
+            '#disabled'    => $disabled,
+          );
+
+          $form[$fieldset_name]['invoice_number'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t('Invoice #'),
+            '#size'          => 20,
+            '#maxlength'     => 20,
+            '#default_value' => $invoice_number,
+            '#disabled'      => $disabled,
+          );
+
+          $form[$fieldset_name]['invoice_date'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t('Invoice Date'),
+            '#size'          => 20,
+            '#maxlength'     => 20,
+            '#default_value' => $invoice_date,
+            '#disabled'      => $disabled,
+          );
+
+          $form[$fieldset_name]['event_name'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t('Event Name'),
+            '#size'          => 20,
+            '#maxlength'     => 20,
+            '#default_value' => $event_name,
+            '#disabled'      => $disabled,
+          );
+
+          $form[$fieldset_name]['terms'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t('Terms'),
+            '#size'          => 20,
+            '#maxlength'     => 20,
+            '#default_value' => $terms,
+            '#disabled'      => $disabled,
+          );
+
+          $form[$fieldset_name]['due_date'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t('Due Date'),
+            '#size'          => 20,
+            '#maxlength'     => 20,
+            '#default_value' => $due_date,
+            '#disabled'      => $disabled,
+          );
+        }
+
+        // sub-totals & total
+        if ($is_admin || $is_accountant || $is_client || $is_operation) {
+          $grand_total = $staffing_total + $miscellaneous_total + $car_expense + $travel_expense + $other_expense;
+          $balance     = $grand_total - $credits;
+          $disabled    = FALSE;
+
+          if ($is_client || $is_operation) {
+            $disabled = TRUE;
+          }
+
+          $form['estimate'] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t('Estimate Total'),
+            '#attributes'  => array('class' => array('flexible-width')),
+            '#collapsible' => TRUE,
+            '#collapsed'   => FALSE,
+          );
+
+          $form['estimate']['estimate_table_header'] = array(
+            '#markup' => '<table class="estimate-table">',
+          );
+
+          $form['estimate']['staffing_total'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$staffing_total, 2),
+            '#attributes'    => array('cell-type' => 'staffing-total', 'cell-group' => 'sub-total'),
+            '#prefix'        => '<tr><td><label>Staffing</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => TRUE,
+          );
+
+          $form['estimate']['misc_total'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$miscellaneous_total, 2),
+            '#attributes'    => array('cell-type' => 'misc-total', 'cell-group' => 'sub-total'),
+            '#prefix'        => '<tr><td><label>Miscellaneous</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => TRUE,
+          );
+
+          $form['estimate']['car_expense'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$car_expense, 2),
+            '#attributes'    => array('cell-type' => 'car-expense', 'cell-group' => 'sub-total'),
+            '#prefix'        => '<tr><td><label>Car Expense</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => TRUE,
+          );
+
+          $form['estimate']['travel_expense'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$travel_expense, 2),
+            '#attributes'    => array('cell-type' => 'travel-expense', 'cell-group' => 'sub-total'),
+            '#prefix'        => '<tr><td><label>Travel Expense</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => $disabled,
+          );
+
+          $form['estimate']['other_expense'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$other_expense, 2),
+            '#attributes'    => array('cell-type' => 'other-expense', 'cell-group' => 'sub-total'),
+            '#prefix'        => '<tr><td><label>Other</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => $disabled,
+          );
+
+          $form['estimate']['estimate_table_divider_1'] = array(
+            '#markup' => '<tr><td colspan="2"><hr size="1"></td></tr>',
+          );
+
+          $form['estimate']['grand_total'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$grand_total, 2),
+            '#attributes'    => array('cell-type' => 'grand-total'),
+            '#prefix'        => '<tr><td><label>Total</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => TRUE,
+          );
+
+          $form['estimate']['credits'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$credits, 2),
+            '#attributes'    => array('cell-type' => 'credits'),
+            '#prefix'        => '<tr><td><label>Credits</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => $disabled,
+          );
+
+          $form['estimate']['estimate_table_divider_2'] = array(
+            '#markup' => '<tr><td colspan="2"><hr size="1"></td></tr>',
+          );
+
+          $form['estimate']['balance'] = array(
+            '#type'          => 'textfield',
+            '#title'         => t(''),
+            '#size'          => 10,
+            '#maxlength'     => 20,
+            '#default_value' => number_format((float)$balance, 2),
+            '#attributes'    => array('cell-type' => 'balance'),
+            '#prefix'        => '<tr><td><label>Balance</label></td><td>',
+            '#suffix'        => '</td></tr>',
+            '#disabled'      => $disabled,
+            '#disabled'      => TRUE,
+          );
+
+          $form['estimate']['estimate_table_footer'] = array(
+            '#markup' => '</table>',
+          );
+        }
+
+        // options - notes and file upload
+        if ($is_admin || $is_accountant || $is_client || $is_operation || $is_supervisor) {
+          $disabled = FALSE;
+          if (($is_client || $is_supervisor) && ($event_status == $invoiced_tid)) {
+            $disabled = TRUE;
+          }
+
+          $form['options'] = array(
+            '#type'        => 'fieldset',
+            '#title'       => t('Options'),
+            '#attributes'  => array('class' => array('flexible-width')),
+            '#collapsible' => TRUE,
+            '#collapsed'   => FALSE,
+          );
+
+          $form['options']['timesheet_notes'] = array(
+            '#type'          => 'textarea',
+            '#title'         => t('Notes'),
+            '#default_value' => $timesheet_notes,
+            '#cols'          => 60,
+            '#rows'          => 5,
+            '#disabled'      => $disabled,
+          );
+
+          if (($upload_filename) && ($upload_url)) {
+            $form['options']['uploaded'] = array(
+              '#markup' => '<a href="' . $upload_url . '" target="_blank">Uploaded Timesheet</a>',
+            );
+
+            $form['options']['upload_fid'] = array(
+              '#type'  => 'hidden',
+              '#value' => $upload_fid,
+            );
+          }
+
+          $form['options']['upload'] = array(
+            '#type'  => 'file',
+            '#title' => t('Upload Timesheet'),
+          );
+
+          if ($is_admin || $is_accountant || $is_operation) {
+            $form['options']['break_length'] = array(
+              '#type'          => 'textfield',
+              '#title'         => t('Break Length'),
+              '#size'          => 10,
+              '#maxlength'     => 20,
+              '#default_value' => $break_length,
+              '#description'   => t('in minutes'),
+            );
+          }
+        }
+
+        $form['submit'] = array(
+          '#type'  => 'submit',
+          '#value' => 'Update',
+        );
+      }
+    }
+  }
+
+  return $form;
+}
+
+/*
+ * validate event timesheet form
+ */
+function poc_assign_timesheet_form_validate($form, &$form_state) {
+  if (isset($form_state['values']['upload'])) {
+    $file = file_save_upload('upload', array('file_validate_extensions' => array('png gif jpg jpeg pdf')));
+    if ($file) {
+      $dot_pos   = strrpos($file->filename, '.');
+      $extension = substr($file->filename, $dot_pos + 1);
+      $filename  = 'timesheet-' . $form_state['values']['event_nid'] . '-' . rand(1000000, 9999999) . '.' . $extension;
+
+      if ($file = file_move($file, 'public://timesheets/' . $filename)) {
+        $form_state['storage']['file'] = $file;
+      }
+      else {
+        form_set_error('upload', t("Failed to write the uploaded file to the site's file folder."));
+      }
+    }
+  }
+}
+
+/*
+ * submit event timesheet form
+ */
+function poc_assign_timesheet_form_submit($form, &$form_state) {
+  $client           = NULL;
+  $client_uid       = intval($form_state['values']['client_uid']);
+  $data             = array();
+  $drivers          = array();
+  $event_nid        = intval($form_state['values']['event_nid']);
+  $language         = LANGUAGE_NONE;
+  $miscellaneous    = array();
+  $positions        = poc_helper_get_positions();
+  $soh_billing_rate = 0;
+  $update_client    = FALSE;
+  $upload_fid       = 0;
+
+  // process form items
+  foreach ($form_state['values'] as $key => $value) {
+    $key_parts = explode('_', $key);
+    if (isset($key_parts[0])) {
+      switch ($key_parts[0]) {
+        case 'position':
+          $field_type      = '';
+          $position_number = '';
+          $short_name      = '';
+
+          if (isset($key_parts[1])) {
+            $short_name = $key_parts[1];
+          }
+          if (isset($key_parts[2])) {
+            $position_number = $key_parts[2];
+          }
+          if (isset($key_parts[3])) {
+            $field_type = $key_parts[3];
+          }
+          if (($short_name) && ($position_number) && ($field_type) && (ctype_alpha($short_name)) && (ctype_digit($position_number))) {
+            $data[$short_name . '_' . $position_number][$field_type] = $value;
+          }
+          break;
+
+        case 'misc':
+          $item_number = '';
+          $item_type = '';
+
+          if (isset($key_parts[2])) {
+            $item_number = $key_parts[2];
+          }
+          if (isset($key_parts[3])) {
+            $item_type = $key_parts[3];
+          }
+          if (($item_number) && (ctype_digit($item_number)) && ($item_type) && (ctype_alpha($item_type))) {
+            $miscellaneous[$item_number][$item_type] = $value;
+          }
+          break;
+
+        case 'driver':
+          $item_number = '';
+          $item_type = '';
+
+          if (isset($key_parts[1])) {
+            $item_number = $key_parts[1];
+          }
+          if (isset($key_parts[2])) {
+            $item_type = $key_parts[2];
+          }
+          if (($item_number) && (ctype_digit($item_number)) && ($item_type) && (ctype_alpha($item_type))) {
+            $drivers[$item_number][$item_type] = $value;
+          }
+          break;
+      }
+    }
+  }
+
+  if (!empty($data)) {
+    foreach ($data as $key => $value) {
+      $key_parts       = explode('_', $key);
+      $position_tid    = poc_helper_get_position_tid_by_short_name($positions, $key_parts[0]);
+      $position_number = $key_parts[1];
+
+      $start_time      = '';
+      $end_time        = '';
+      $break           = '';
+      $spread_of_hours = '';
+      $preferred       = '';
+      $disapproved     = '';
+      $uid             = '';
+
+      if (isset($value['start'])) {
+        $start_time = $value['start'];
+      }
+      if (isset($value['end'])) {
+        $end_time = $value['end'];
+      }
+      if (isset($value['break'])) {
+        $break = $value['break'];
+      }
+      if (isset($value['soh'])) {
+        $spread_of_hours = $value['soh'];
+      }
+      if (isset($value['preferred'])) {
+        $preferred = $value['preferred'];
+      }
+      if (isset($value['disapproved'])) {
+        $disapproved = $value['disapproved'];
+      }
+      if (isset($value['uid'])) {
+        $uid = $value['uid'];
+      }
+
+      // update existing record
+      $fields = array(
+        'start_time'      => $start_time,
+        'end_time'        => $end_time,
+        'break'           => $break,
+        'spread_of_hours' => $spread_of_hours,
+        'preferred'       => $preferred,
+        'disapproved'     => $disapproved,
+        'timestamp'       => REQUEST_TIME,
+      );
+
+      db_update('poc_event_timesheet')
+        ->fields($fields)
+        ->condition('event_nid', $event_nid, '=')
+        ->condition('position_tid', $position_tid, '=')
+        ->condition('position_num', $position_number, '=')
+        ->execute();
+
+      db_update('poc_event_timesheet')
+        ->fields(array('grade' => 4))
+        ->condition('event_nid', $event_nid, '=')
+        ->condition('position_tid', $position_tid, '=')
+        ->condition('position_num', $position_number, '=')
+        ->isNull('grade')
+        ->execute();
+
+      if (($uid) && ($client_uid) && ($preferred)) {
+        if (!isset($client)) {
+          $client = user_load($client_uid);
+        }
+
+        // add user to client's preferred list
+        $found = FALSE;
+        if (isset($client->field_preferred_users[$language])) {
+          $found = poc_assign_find_value($client->field_preferred_users[$language], $uid);
+        }
+        if ($found === FALSE) {
+          $client->field_preferred_users[$language][]['target_id'] = $uid;
+          $update_client = TRUE;
+        }
+
+        // remove user from client's disapproved list if found
+        $found = FALSE;
+        if (isset($client->field_disapproved_users[$language])) {
+          $found = poc_assign_find_value($client->field_disapproved_users[$language], $uid);
+        }
+        if ($found !== FALSE) {
+          unset($client->field_disapproved_users[$language][$found]);
+          $update_client = TRUE;
+        }
+      }
+
+      if (($uid) && ($client_uid) && ($disapproved)) {
+        if (!isset($client)) {
+          $client = user_load($client_uid);
+        }
+
+        // add user to client's disapproved list
+        $found = FALSE;
+        if (isset($client->field_disapproved_users[$language])) {
+          $found = poc_assign_find_value($client->field_disapproved_users[$language], $uid);
+        }
+        if ($found === FALSE) {
+          $client->field_disapproved_users[$language][]['target_id'] = $uid;
+          $update_client = TRUE;
+        }
+
+        // remove user from client's preferred list if found
+        $found = FALSE;
+        if (isset($client->field_preferred_users[$language])) {
+          $found = poc_assign_find_value($client->field_preferred_users[$language], $uid);
+        }
+        if ($found !== FALSE) {
+          unset($client->field_preferred_users[$language][$found]);
+          $update_client = TRUE;
+        }
+      }
+    }
+  }
+
+  // process miscellaneous items
+  db_delete('poc_event_invoice_item')
+    ->condition('event_nid', $event_nid)
+    ->execute();
+
+  if (!empty($miscellaneous)) {
+    foreach ($miscellaneous as $value) {
+      $date        = '';
+      $item        = '';
+      $description = '';
+      $rate        = '';
+      $quantity    = '';
+
+      if (isset($value['date'])) {
+        $date = $value['date'];
+      }
+      if (isset($value['item'])) {
+        $item = $value['item'];
+      }
+      if (isset($value['desc'])) {
+        $description = $value['desc'];
+      }
+      if (isset($value['rate'])) {
+        $rate = $value['rate'];
+      }
+      if (isset($value['quantity'])) {
+        $quantity = $value['quantity'];
+      }
+
+      if (($date) && ($item) && ($rate) && ($quantity)) {
+        $fields = array(
+          'event_nid'   => $event_nid,
+          'date'        => $date,
+          'item'        => $item,
+          'description' => $description,
+          'rate'        => $rate,
+          'quantity'    => $quantity,
+          'timestamp'   => REQUEST_TIME,
+        );
+
+        db_insert('poc_event_invoice_item')
+          ->fields($fields)
+          ->execute();
+      }
+    }
+  }
+
+  // process drivers
+  db_delete('poc_event_expense_item')
+    ->condition('event_nid', $event_nid)
+    ->execute();
+
+  if (!empty($drivers)) {
+    foreach ($drivers as $value) {
+      $uid = '';
+      $amount = '';
+
+      if (!empty($value['uid'])) {
+        $open_bracket_pos = strpos($value['uid'], '[');
+        $close_bracket_pos = strpos($value['uid'], ']');
+        if (($open_bracket_pos !== FALSE) && ($close_bracket_pos !== FALSE)) {
+          $uid = substr($value['uid'], $open_bracket_pos + 1, $close_bracket_pos - $open_bracket_pos - 1);
+        }
+      }
+      if (isset($value['amount'])) {
+        $amount = $value['amount'];
+      }
+
+      if (($uid) && ($amount)) {
+        $fields = array(
+          'event_nid'  => $event_nid,
+          'user_uid' => $uid,
+          'amount'     => $amount,
+          'timestamp'  => REQUEST_TIME,
+        );
+
+        db_insert('poc_event_expense_item')
+          ->fields($fields)
+          ->execute();
+      }
+    }
+  }
+
+  // save client profile if it has been updated
+  if ((isset($client)) && ($update_client)) {
+    user_save($client);
+  }
+
+  // process timesheet upload
+  if (isset($form_state['storage']['file'])) {
+    // check if old file needs to be deleted
+    if (isset($form_state['values']['upload_fid'])) {
+      if ($form_state['values']['upload_fid']) {
+        $file = file_load($form_state['values']['upload_fid']);
+        file_delete($file);
+      }
+    }
+
+    $file = $form_state['storage']['file'];
+    unset($form_state['storage']['file']);
+    $file->status = FILE_STATUS_PERMANENT;
+    $upload_fid = $file->fid;
+    file_save($file);
+  }
+
+  // process invoice items & timesheet notes
+  $event_node = node_load($event_nid);
+  $language = $event_node->language;
+
+  if (isset($form_state['values']['invoice_number'])) {
+    $event_node->field_invoice_number[$language][0]['value'] = $form_state['values']['invoice_number'];
+  }
+  if (isset($form_state['values']['invoice_date'])) {
+    $event_node->field_invoice_date[$language][0]['value'] = date('Y-m-d H:i:s', strtotime($form_state['values']['invoice_date']));
+  }
+  if (isset($form_state['values']['event_name'])) {
+    $event_node->field_event_name[$language][0]['value'] = $form_state['values']['event_name'];
+  }
+  if (isset($form_state['values']['terms'])) {
+    $event_node->field_terms[$language][0]['value'] = $form_state['values']['terms'];
+  }
+  if (isset($form_state['values']['due_date'])) {
+    $event_node->field_due_date[$language][0]['value'] = date('Y-m-d H:i:s', strtotime($form_state['values']['due_date']));
+  }
+  if (isset($form_state['values']['travel_expense'])) {
+    $event_node->field_travel_expense[$language][0]['value'] = $form_state['values']['travel_expense'];
+  }
+  if (isset($form_state['values']['other_expense'])) {
+    $event_node->field_other_expense[$language][0]['value'] = $form_state['values']['other_expense'];
+  }
+  if (isset($form_state['values']['grand_total'])) {
+    $event_node->field_total[$language][0]['value'] = $form_state['values']['grand_total'];
+  }
+  if (isset($form_state['values']['credits'])) {
+    $event_node->field_credits[$language][0]['value'] = $form_state['values']['credits'];
+  }
+  if (isset($form_state['values']['balance'])) {
+    $event_node->field_balance[$language][0]['value'] = $form_state['values']['balance'];
+  }
+  if (isset($form_state['values']['timesheet_notes'])) {
+    $event_node->field_timesheet_notes[$language][0]['value'] = $form_state['values']['timesheet_notes'];
+  }
+  if ($upload_fid) {
+    $event_node->field_timesheet_fid[$language][0]['value'] = $upload_fid;
+  }
+  if (isset($form_state['values']['break_length'])) {
+    $event_node->field_break_length[$language][0]['value'] = $form_state['values']['break_length'];
+  }
+
+  node_save($event_node);
+
+  drupal_set_message(t('The timesheet has been updated.'), 'status');
+}
+
+/*
+ * create payroll hours form
+ */
+function poc_assign_payroll_hours_form($form, &$form_state, $event_nid = 0) {
+  $form = array();
+
+  $assignments         = array();
+  $event_position_tids = array();
+  $break_length        = '30';
+  $positions           = poc_helper_get_positions();
+  $row_num             = 0;
+
+  $event_node = node_load($event_nid);
+  $language = $event_node->language;
+  if (isset($event_node->field_break_length[$language][0]['value'])) {
+    $break_length = $event_node->field_break_length[$language][0]['value'];
+  }
+
+  $language = LANGUAGE_NONE;
+
+  // load default values from database
+  $sql = 'SELECT user_uid, position_tid, position_num, note, start_time, end_time, break, spread_of_hours, pay_rate, payroll_hours FROM {poc_event_timesheet} WHERE event_nid = :nid';
+  $args = array(':nid' => $event_nid);
+  $result = db_query($sql, $args);
+  foreach ($result as $record) {
+    $assignments[$record->position_tid][$record->position_num] = array(
+      'user_uid'      => $record->user_uid,
+      'note'            => $record->note,
+      'start_time'      => $record->start_time,
+      'end_time'        => $record->end_time,
+      'break'           => $record->break,
+      'spread_of_hours' => $record->spread_of_hours,
+      'pay_rate'        => $record->pay_rate,
+      'payroll_hours'   => $record->payroll_hours,
+    );
+
+    if ((empty($event_position_tids)) || (array_search($record->position_tid, $event_position_tids) === FALSE)) {
+      $event_position_tids[] = $record->position_tid;
+    }
+  }
+
+  // hidden form field
+  $form['event_nid'] = array(
+    '#type'  => 'hidden',
+    '#value' => $event_nid,
+  );
+
+  $markup  = '<table class="payroll-hours-form-table"><thead><tr>';
+  $markup .= '<th>Position</th>';
+  $markup .= '<th>#</th>';
+  $markup .= '<th>Note</th>';
+  $markup .= '<th>Name</th>';
+  $markup .= '<th>In</th>';
+  $markup .= '<th>Out</th>';
+  $markup .= '<th>Break</th>';
+  $markup .= '<th>SOH</th>';
+  $markup .= '<th>Hours</th>';
+  $markup .= '<th>Payroll Hours</th>';
+  $markup .= '</tr></thead>';
+
+  $form['payroll_hours_table_header'] = array(
+    '#markup' => $markup,
+  );
+
+  foreach ($event_position_tids as $tid) {
+    $position_name = '';
+    $position_short_name = '';
+
+    foreach ($positions as $position) {
+      if ($position['tid'] == $tid) {
+        $position_name = $position['title'];
+        $position_short_name = $position['short_name'];
+        break;
+      }
+    }
+
+    foreach ($assignments[$tid] as $position_number => $assignment) {
+      $billing_hours     = poc_helper_calculate_time_delta($assignment['start_time'], $assignment['end_time'], $assignment['break'], $break_length);
+      $break             = '';
+      $field_name_prefix = 'position_' . $position_short_name . '_' . $position_number;
+      $row_class         = 'odd';
+      $soh               = '';
+      $user            = user_load($assignment['user_uid']);
+
+      $row_num++;
+      if (($row_num % 2) == 0) {
+        $row_class = 'even';
+      }
+
+      if (!empty($assignment['break'])) {
+        $break = 'X';
+      }
+      if (!empty($assignment['spread_of_hours'])) {
+        $soh = 'X';
+      }
+      if (isset($user->field_address[$language][0]['name_line'])) {
+        $user_name = $user->field_address[$language][0]['name_line'];
+      }
+
+      $form[$field_name_prefix . '_position'] = array(
+        '#markup' => '<tr class="' . $row_class . '"><td>' . $position_name . '</td>',
+      );
+
+      $form[$field_name_prefix . '_position_num'] = array(
+        '#markup' => '<td>' . $position_number . '</td>',
+      );
+
+      $form[$field_name_prefix . '_note'] = array(
+        '#markup' => '<td>' . $assignment['note'] . '</td>',
+      );
+
+      $form[$field_name_prefix . '_name'] = array(
+        '#markup' => '<td>' . $user_name . '</td>',
+      );
+
+      $form[$field_name_prefix . '_start'] = array(
+        '#markup' => '<td>' . $assignment['start_time'] . '</td>',
+      );
+
+      $form[$field_name_prefix . '_end'] = array(
+        '#markup' => '<td>' . $assignment['end_time'] . '</td>',
+      );
+
+      $form[$field_name_prefix . '_break'] = array(
+        '#markup' => '<td>' . $break . '</td>',
+      );
+
+      $form[$field_name_prefix . '_soh'] = array(
+        '#markup' => '<td>' . $soh . '</td>',
+      );
+
+      $form[$field_name_prefix . '_billing_hours'] = array(
+        '#markup' => '<td>' . $billing_hours . '</td>',
+      );
+
+      $form[$field_name_prefix . '_hours'] = array(
+        '#type'          => 'textfield',
+        '#title'         => t(''),
+        '#size'          => 5,
+        '#maxlength'     => 10,
+        '#default_value' => $assignment['payroll_hours'],
+        '#prefix'        => '<td>',
+        '#suffix'        => '</td>',
+      );
+
+      $form[$field_name_prefix . '_row_end'] = array(
+        '#markup' => '</tr>',
+      );
+    }
+  }
+
+  $form['payroll_hours_table_footer'] = array(
+    '#markup' => '</table>',
+  );
+
+  $form['submit'] = array(
+    '#type'  => 'submit',
+    '#value' => 'Update',
+  );
+
+  return $form;
+}
+
+/*
+ * submit payroll hours form
+ */
+function poc_assign_payroll_hours_form_submit($form, &$form_state) {
+  $positions = poc_helper_get_positions();
+  $event_nid = intval($form_state['values']['event_nid']);
+
+  foreach ($form_state['values'] as $key => $value) {
+    $key_parts = explode('_', $key);
+    if (!empty($key_parts[0]) && !empty($key_parts[1]) && !empty($key_parts[2]) && !empty($key_parts[3])) {
+      if (($key_parts[0] == 'position') && (ctype_alpha($key_parts[1])) && (ctype_digit($key_parts[2])) && ($key_parts[3] == 'hours')) {
+        $payroll_hours   = '';
+        $position_tid    = poc_helper_get_position_tid_by_short_name($positions, $key_parts[1]);
+        $position_number = $key_parts[2];
+
+        if ($value) {
+          $payroll_hours = $value;
+        }
+
+        $fields = array(
+          'payroll_hours' => $payroll_hours,
+          'timestamp' => REQUEST_TIME,
+        );
+
+        if ($position_tid) {
+          db_update('poc_event_timesheet')
+            ->fields($fields)
+            ->condition('event_nid', $event_nid, '=')
+            ->condition('position_tid', $position_tid, '=')
+            ->condition('position_num', $position_number, '=')
+            ->execute();
+        }
+      }
+    }
+  }
+
+  drupal_set_message(t('The payroll hours have been updated.'), 'status');
+}
+
+/*
+ * timesheet form ajax methods
+ */
+function poc_assign_add_miscellaneous_item_row($form, &$form_state) {
+  $form_state['number_of_miscellaneous_items']++;
+  $form_state['rebuild'] = TRUE;
+}
+
+function poc_assign_add_miscellaneous_item_row_callback($form, $form_state) {
+  return $form['miscellaneous'];
+}
+
+function poc_assign_add_driver_row($form, &$form_state) {
+  $form_state['number_of_drivers']++;
+  $form_state['rebuild'] = TRUE;
+}
+
+function poc_assign_add_driver_row_callback($form, $form_state) {
+  return $form['drivers'];
+}
+
+/*
+ * rate user via stars rating (ajax)
+ */
+function poc_assign_rate_user() {
+  // validate ajax request
+  if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+    // to-do: additional validation check on non-admin users
+
+    // process request
+    $query_parameters = drupal_get_query_parameters();
+    if (isset($query_parameters['value'])) {
+      $value = $query_parameters['value'];
+      $value_parts = explode('-', $value);
+      if (!empty($value_parts[0]) && !empty($value_parts[1]) && !empty($value_parts[2]) && isset($value_parts[3])) {
+        $event_nid    = $value_parts[0];
+        $position_tid = $value_parts[1];
+        $position_num = $value_parts[2];
+        $grade        = $value_parts[3];
+        $is_internal  = FALSE;
+
+        if (!empty($value_parts[4])) {
+          if ($value_parts[4] == 'i') {
+            $is_internal = TRUE;
+          }
+        }
+
+        if (ctype_digit($event_nid) && ctype_digit($position_tid) && ctype_digit($position_num) && ctype_digit($grade)) {
+          $fields = array();
+          if ($is_internal) {
+            $fields = array(
+              'internal_grade' => $grade,
+              'timestamp' => REQUEST_TIME,
+            );
+          }
+          else {
+            $fields = array(
+              'grade' => $grade,
+              'timestamp' => REQUEST_TIME,
+            );
+          }
+          db_update('poc_event_timesheet')
+            ->fields($fields)
+            ->condition('event_nid', $event_nid, '=')
+            ->condition('position_tid', $position_tid, '=')
+            ->condition('position_num', $position_num, '=')
+            ->execute();
+        }
+      }
+    }
+  }
+}
+
+/*
+ * create autocomplete suggestion list
+ */
+function poc_assign_driver_autocomplete($event_nid = '', $key = '') {
+  $user_rid = variable_get('user_rid');
+  $matches = array();
+
+  if ($event_nid) {
+    $sql = 'SELECT a.entity_id, a.field_address_name_line FROM {field_data_field_address} a JOIN {users_roles} r ON a.entity_id = r.uid JOIN {poc_event_timesheet} t ON a.entity_id = t.user_uid WHERE a.bundle = :bundle AND r.rid = :rid AND t.event_nid = :nid AND a.field_address_name_line LIKE :key';
+    $args = array(':bundle' => 'user', ':rid' => $user_rid, ':nid' => $event_nid, ':key' => '%' . $key . '%');
+    $result = db_query($sql, $args);
+    foreach ($result as $record) {
+      $item = $record->field_address_name_line . ' [' . $record->entity_id . ']';
+      $matches[$item] = check_plain($item);
+    }
+  }
+
+  drupal_json_output($matches);
+};
+
+
+function poc_assign_user_autocomplete($parameters = '', $key = '') {
+  $user_rid         = variable_get('user_rid');
+  $disapproved_uids   = array();
+  $matches            = array();
+  $valid_parameters   = FALSE;
+  $branch_tid         = '';
+  $client_uid         = '';
+  $event_nid          = '';
+  $start              = '';
+  $end                = '';
+  $year               = '';
+  $month              = '';
+  $day                = '';
+  $event_tids         = array(variable_get('event_status_post_event_tid'), variable_get('event_status_invoiced_tid'));
+  $user_tids        = array(variable_get('user_status_active_tid'), variable_get('user_status_event_tid'));
+  $tux_tid            = variable_get('uniform_full_tux_tid');
+
+  if ($parameters) {
+    $parameters_parts = explode('_', $parameters);
+
+    if (isset($parameters_parts[0])) {
+      $client_uid = $parameters_parts[0];
+    }
+    if (isset($parameters_parts[1])) {
+      $event_nid = $parameters_parts[1];
+    }
+    if (isset($parameters_parts[2])) {
+      $branch_tid = $parameters_parts[2];
+    }
+    if (isset($parameters_parts[3])) {
+      $date = $parameters_parts[3];
+    }
+    if (isset($parameters_parts[4])) {
+      $start = $parameters_parts[4];
+    }
+    if (isset($parameters_parts[5])) {
+      $end = $parameters_parts[5];
+    }
+
+    $date_parts = explode('-', $date);
+    if (isset($date_parts[0])) {
+      $year = $date_parts[0];
+    }
+    if (isset($date_parts[1])) {
+      $month = $date_parts[1];
+    }
+    if (isset($date_parts[2])) {
+      $day = $date_parts[2];
+    }
+  }
+
+  // load all disapproved user user ids for client
+  if (ctype_digit($client_uid)) {
+    $client = user_load($client_uid);
+    $language = LANGUAGE_NONE;
+    if (isset($client->field_disapproved_users[$language])) {
+      foreach ($client->field_disapproved_users[$language] as $index => $value) {
+        $disapproved_uids[] = $value['target_id'];
+      }
+    }
+  }
+
+  // find all matches
+  if (($key) && ctype_digit($year) && ctype_digit($month) && ctype_digit($day) && ctype_digit($client_uid) && ctype_digit($event_nid))  {
+    $select = 'SELECT DISTINCT a.entity_id, a.field_address_name_line FROM {field_data_field_address} a JOIN {users_roles} r ON a.entity_id = r.uid JOIN {field_data_field_user_status} s ON a.entity_id = s.entity_id JOIN {poc_user_availability} t ON a.entity_id = t.user_uid';
+    $where = 'WHERE a.bundle = :bundle AND s.bundle = :bundle AND r.rid = :rid AND s.field_user_status_tid IN (:tids) AND a.field_address_name_line LIKE :key AND t.date = :date';
+    $args = array(
+      ':bundle' => 'user',
+      ':date'   => $date,
+      ':key'    => '%' . $key . '%',
+      ':rid'    => $user_rid,
+      ':tids'   => $user_tids,
+    );
+
+    if (ctype_digit($branch_tid)) {
+      $select .= ' JOIN {field_data_field_branch} b ON a.entity_id = b.entity_id';
+      $where .= ' AND b.bundle = :bundle AND b.field_branch_tid = :tid';
+      $args[':tid'] = $branch_tid;
+    }
+    if (ctype_digit($start) && ctype_digit($end)) {
+      $where .= ' AND (t.all_day = :all OR (t.start_hour >= :start AND t.end_hour <= :end))';
+      $args[':all'] = 1;
+      $args[':start'] = $start;
+      $args[':end'] = $end;
+    }
+    elseif (ctype_digit($start)) {
+      $where .= ' AND (t.all_day = :all OR t.start_hour >= :start)';
+      $args[':all'] = 1;
+      $args[':start'] = $start;
+    }
+    elseif (ctype_digit($end)) {
+      $where .= ' AND (t.all_day = :all OR t.end_hour <= :start)';
+      $args[':all'] = 1;
+      $args[':end'] = $end;
+    }
+
+    $sql = $select . ' ' . $where . ' ORDER BY a.field_address_name_line';
+    $result = db_query($sql, $args);
+    foreach ($result as $record) {
+      // filter disapproved users
+      if (array_search($record->entity_id, $disapproved_uids) === FALSE) {
+        $extra = '';
+
+        // check if the user is already booked for the day
+        $sql = 'SELECT t.event_nid FROM {poc_event_timesheet} t JOIN {field_data_field_date} d ON t.event_nid = d.entity_id WHERE d.bundle = :bundle AND d.field_date_value = :date AND t.event_nid <> :nid AND t.user_uid = :uid';
+        $args = array(
+          ':bundle' => 'event',
+          ':date'   => $date . ' 00:00:00',
+          ':nid'    => $event_nid,
+          ':uid'    => $record->entity_id,
+        );
+        $query_result = db_query($sql, $args);
+        $db_record = $query_result->fetchObject();
+        if (isset($db_record->event_nid)) {
+          $extra .= '*';
+        }
+
+        // check if the user has a tux
+        $sql = 'SELECT entity_id FROM {field_data_field_uniforms} WHERE bundle = :bundle AND entity_id = :uid AND field_uniforms_tid = :tid';
+        $args = array(
+          ':bundle' => 'user',
+          ':tid'    => $tux_tid,
+          ':uid'    => $record->entity_id,
+        );
+        $query_result = db_query($sql, $args);
+        $db_record = $query_result->fetchObject();
+        if (isset($db_record->entity_id)) {
+          $extra .= 't';
+        }
+
+        // check if the user has worked for the client before
+        $sql = 'SELECT t.event_nid FROM {poc_event_timesheet} t JOIN {field_data_field_event_status} s ON t.event_nid = s.entity_id JOIN {field_data_field_client} c ON t.event_nid = c.entity_id WHERE s.bundle = :bundle AND c.bundle = :bundle AND s.field_event_status_tid IN (:tids) AND t.user_uid = :user_uid AND c.field_client_target_id = :client_uid';
+        $args = array(
+          ':bundle'     => 'event',
+          ':client_uid' => $client_uid,
+          ':user_uid' => $record->entity_id,
+          ':tids'       => $event_tids,
+        );
+        $query_result = db_query($sql, $args);
+        $db_record = $query_result->fetchObject();
+        if (isset($db_record->event_nid)) {
+          $extra .= '@';
+        }
+
+        $item = $record->field_address_name_line . ' (' . $extra . ') [' . $record->entity_id . ']';
+        $matches[$item] = check_plain($item);
+      }
+    }
+  }
+
+  drupal_json_output($matches);
+}
+
+/*
+ * build php view field openings
+ */
+function poc_assign_build_view_field_openings($event_nid = 0) {
+  global $user;
+  $openings_access = user_access('manage event assignments', $user);
+  $send_sms_access = user_access('manage sms', $user);
+  $output = '';
+
+  if (($event_nid) && ($openings_access || $send_sms_access)) {
+    if ($openings_access) {
+      $filled    = 0;
+      $openings  = 0;
+      $href      = '';
+      $has_notes = FALSE;
+
+      // calculate number of filled positions
+      $sql = 'SELECT count(*) AS num FROM {poc_event_timesheet} a WHERE a.event_nid = :nid';
+      $args = array(':nid' => $event_nid);
+      $result = db_query($sql, $args);
+      $record = $result->fetchObject();
+      if (isset($record->num)) {
+        $filled = $record->num;
+      }
+
+      // calculate number of openings
+      $event_node = node_load($event_nid);
+      if ($event_node) {
+        $language = $event_node->language;
+        if (!empty($event_node->field_assignment_notes[$language][0]['value'])) {
+          $has_notes = TRUE;
+        }
+        if (isset($event_node->field_positions[$language][0]['value'])) {
+          $event_positions = trim($event_node->field_positions[$language][0]['value']);
+          $event_positions = unserialize($event_positions);
+          foreach ($event_positions as $value) {
+            $openings += $value;
+          }
+        }
+      }
+
+      // build output as hyperlink
+      $output = '<a href="'.base_path().'admin/assign/' . $event_nid . '">' . ($openings - $filled) . ' / ' . $openings;
+      if ($has_notes) {
+        $output .= ' *';
+      }
+      $output .= '</a>';
+    }
+  }
+
+  return $output;
+}
+
+/*
+ * build php view field payroll hours
+ */
+function poc_assign_build_view_field_payroll_hours($event_nid = 0) {
+  global $user;
+  $access = user_access('manage payroll hours', $user);
+  $output = '';
+
+  if (($event_nid) && ($access)) {
+    $output = '<a href="'.base_path().'admin/payroll-hours/' . $event_nid . '">hours</a>';
+  }
+
+  return $output;
+}
+
+/*
+ * build php view field timesheet
+ */
+function poc_assign_build_view_field_timesheet($event_nid = 0) {
+  global $user;
+  $access = user_access('manage timesheets', $user);
+  $output = '';
+
+  if (($event_nid) && ($access)) {
+    $output = '<a href="'.base_path().'admin/timesheet/' . $event_nid . '">timesheet</a>';
+  }
+
+  return $output;
+}
+
+/*
+ * build php view field rating
+ */
+function poc_assign_build_view_field_rating($user_uid = 0) {
+  global $user;
+  $access = user_access('manage event assignments', $user);
+  $output = '';
+
+  if (($user_uid) && ($access)) {
+    $ext_grade_average = 0;
+    $int_grade_average = 0;
+    $sql = 'SELECT avg(t.grade) as ext_avg, avg(t.internal_grade) as int_avg FROM {users} u JOIN {poc_event_timesheet} t ON u.uid = t.user_uid WHERE u.uid = :uid';
+    $args = array(':uid' => $user_uid);
+    $result = db_query($sql, $args);
+    $record = $result->fetchObject();
+    if (isset($record->ext_avg)) {
+      $ext_grade_average = $record->ext_avg;
+    }
+    if (isset($record->int_avg)) {
+      $int_grade_average = $record->int_avg;
+    }
+    $output = '<a href="'.base_path().'admin/user-event-ratings/' . $user_uid . '">' . sprintf("%.1f", $ext_grade_average) . '/' . sprintf("%.1f", $int_grade_average) . '</a>';
+  }
+
+  return $output;
+}
+
+/*
+ * build event info markup for event assignment form
+ */
+function poc_assign_build_event_info_markup($event_node = NULL, &$form, $show_assignment_notes = FALSE) {
+  $address        = '';
+  $bar_type       = '';
+  $call_time      = '';
+  $date           = '';
+  $end_time       = '';
+  $instructions   = '';
+  $notes          = '';
+  $service_levels = '';
+  $service_style  = '';
+  $size           = '';
+  $time           = '';
+  $uniforms       = '';
+
+  if (isset($event_node)) {
+    $language = $event_node->language;
+
+    if (isset($event_node->field_address[$language][0])) {
+      if (isset($event_node->field_address[$language][0]['thoroughfare'])) {
+        $address .= ' ' . $event_node->field_address[$language][0]['thoroughfare'] . '<br />';
+      }
+      if (isset($event_node->field_addresss[$language][0]['premise'])) {
+        $address .= ' ' . $event_node->field_addresss[$language][0]['premise'] . '<br />';
+      }
+      if (isset($event_node->field_address[$language][0]['locality'])) {
+        $address .= ' ' . $event_node->field_address[$language][0]['locality'] . ',';
+      }
+      if (isset($event_node->field_address[$language][0]['administrative_area'])) {
+        $address .= ' ' . $event_node->field_address[$language][0]['administrative_area'];
+      }
+      if (isset($event_node->field_address[$language][0]['postal_code'])) {
+        $address .= ' ' . $event_node->field_address[$language][0]['postal_code'];
+      }
+    }
+
+    if (isset($event_node->field_bar_type[$language][0]['tid'])) {
+      $tid = $event_node->field_bar_type[$language][0]['tid'];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_bar_type'));
+      $bar_type = $allowed_values[$tid];
+    }
+    if (isset($event_node->field_call_time[$language][0]['tid'])) {
+      $tid = $event_node->field_call_time[$language][0]['tid'];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_call_time'));
+      $call_time = $allowed_values[$tid];
+    }
+    if (isset($event_node->field_date[$language][0]['value'])) {
+      list($date, $time) = explode(' ', $event_node->field_date[$language][0]['value']);
+    }
+    if (isset($event_node->field_end_time[$language][0]['tid'])) {
+      $tid = $event_node->field_end_time[$language][0]['tid'];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_end_time'));
+      $end_time = $allowed_values[$tid];
+    }
+    if (isset($event_node->field_service_levels[$language])) {
+      $tids = $event_node->field_service_levels[$language];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_service_levels'));
+      foreach ($tids as $tid) {
+        $service_levels .= $allowed_values[$tid['tid']] . '<br />';
+      }
+    }
+    if (isset($event_node->field_service_style[$language])) {
+      $tid = $event_node->field_service_style[$language][0]['tid'];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_service_style'));
+      $service_style = $allowed_values[$tid];
+    }
+    if (isset($event_node->field_event_size[$language][0]['tid'])) {
+      $tid = $event_node->field_event_size[$language][0]['tid'];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_event_size'));
+      $size = $allowed_values[$tid];
+    }
+    if (isset($event_node->field_uniforms[$language])) {
+      $tids = $event_node->field_uniforms[$language];
+      $allowed_values = taxonomy_allowed_values(field_info_field('field_uniforms'));
+      foreach ($tids as $tid) {
+        $uniforms .= $allowed_values[$tid['tid']] . '<br />';
+      }
+    }
+    if (isset($event_node->field_instructions[$language][0]['value'])) {
+      $instructions = $event_node->field_instructions[$language][0]['value'];
+    }
+    if (isset($event_node->field_assignment_notes[$language][0]['value'])) {
+      $notes = $event_node->field_assignment_notes[$language][0]['value'];
+    }
+  }
+
+  $form['event_info'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Event Information'),
+    '#collapsible' => TRUE,
+    '#collapsed'   => FALSE,
+  );
+
+  $form['event_info']['event_date']                 = array('#markup' => '<div><label>Date:</label> <span class="event-info-field-value">' . $date . '</span></div>');
+  $form['event_info']['event_address']              = array('#markup' => '<div><label>Address:</label> <span class="event-info-field-value">' . $address . '</span></div>');
+  $form['event_info']['event_call_time']            = array('#markup' => '<div><label>Staff Call Time:</label> <span class="event-info-field-value">' . $call_time . '</span></div>');
+  $form['event_info']['event_end_time']             = array('#markup' => '<div><label>Estimated End Time:</label> <span class="event-info-field-value">' . $end_time . '</span></div>');
+  $form['event_info']['event_size']                 = array('#markup' => '<div><label>Size:</label> <span class="event-info-field-value">' . $size . '</span></div>');
+  $form['event_info']['event_service_levels']       = array('#markup' => '<div><label>Levels of Service:</label> <span class="event-info-field-value">' . $service_levels . '</span></div>');
+  $form['event_info']['event_service_style']        = array('#markup' => '<div><label>Style of Service:</label> <span class="event-info-field-value">' . $service_style . '</span></div>');
+  $form['event_info']['event_bar_type']             = array('#markup' => '<div><label>Type of Bar:</label> <span class="event-info-field-value">' . $bar_type . '</span></div>');
+  $form['event_info']['event_uniforms']             = array('#markup' => '<div><label>Uniforms:</label> <span class="event-info-field-value">' . $uniforms . '</span></div>');
+  $form['event_info']['event_special_instructions'] = array('#markup' => '<div><label>Special Instructions:</label> <span class="event-info-field-value">' . $instructions . '</span></div>');
+
+  if ($show_assignment_notes) {
+    $form['event_info']['event_assignment_notes'] = array('#markup' => '<div><label>Assignment Notes:</label> <span class="event-info-field-value">' . $notes . '</span></div>');
+  }
+}
+
+/*
+ * build client info markup for event assignment form
+ */
+function poc_assign_build_client_info_markup($client_uid = 0, &$form) {
+  $disapproved_users = '';
+  $preferred_users = '';
+
+  if ($client_uid) {
+    $client = user_load($client_uid);
+    $language = LANGUAGE_NONE;
+
+    if (isset($client->field_preferred_users[$language])) {
+      $uids = $client->field_preferred_users[$language];
+      foreach ($uids as $uid) {
+        $account = user_load($uid['target_id']);
+        if (isset($account->field_address[$language][0]['name_line'])) {
+          $preferred_users .= '<div>' . $account->field_address[$language][0]['name_line'] . '</div>';
+        }
+      }
+    }
+
+    if (isset($client->field_disapproved_users[$language])) {
+      $uids = $client->field_disapproved_users[$language];
+      foreach ($uids as $uid) {
+        $account = user_load($uid['target_id']);
+        if (isset($account->field_address[$language][0]['name_line'])) {
+          $disapproved_users .= '<div>' . $account->field_address[$language][0]['name_line'] . '</div>';
+        }
+      }
+    }
+  }
+
+  $form['client_info'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Client Information'),
+    '#collapsible' => TRUE,
+    '#collapsed'   => FALSE,
+  );
+
+  $form['client_info']['client_preferred_users']   = array('#markup' => '<label>Preferred users:</label> ' . $preferred_users);
+  $form['client_info']['client_disapproved_users'] = array('#markup' => '<label>Do Not Use users:</label> ' . $disapproved_users);
+}
+
+/*
+ * implements hook_cron()
+ */
+function poc_assign_cron() {
+  $overtime_scan_end_hour   = variable_get('overtime_scan_end_hour', '');
+  $overtime_scan_start_hour = variable_get('overtime_scan_start_hour', '');
+  $overtime_scan_threshold  = variable_get('overtime_scan_threshold', '');
+  $overtime_scan_weekdays   = variable_get('overtime_scan_weekdays', '');
+
+  if (($overtime_scan_end_hour) && ($overtime_scan_start_hour) && ($overtime_scan_threshold) && ($overtime_scan_weekdays)) {
+    $date_format                  = 'Y-m-d';
+    $last_overtime_scan_date      = '0000-00-00';
+    $last_overtime_scan_timestamp = variable_get('last_overtime_scan_timestamp', '');
+    $request_time                 = getdate(REQUEST_TIME);
+    $request_time_date            = date($date_format, REQUEST_TIME);
+
+    if ($last_overtime_scan_timestamp) {
+      $last_overtime_scan_date = date($date_format, $last_overtime_scan_timestamp);
+    }
+
+    // only run the following code during certain time of the day and certain day of the week
+    if (($last_overtime_scan_date < $request_time_date) &&
+      (array_search($request_time['weekday'], $overtime_scan_weekdays, TRUE) !== FALSE) &&
+      ($request_time['hours'] >= $overtime_scan_start_hour) &&
+      ($request_time['hours'] <= $overtime_scan_end_hour)) {
+
+      watchdog('poc_assign', 'Overtime scan started.', NULL, WATCHDOG_NOTICE);
+
+      $event_nids    = array();
+      $user_hours  = array();
+      $overtime_uids = array();
+
+      // calculate start and end dates
+      $date_format       = 'Y-m-d H:i:s';
+      $start_date_offset = ($request_time['wday'] + 1) % 7;
+      $start_date        = mktime(0, 0, 0, $request_time['mon'], $request_time['mday'] - $start_date_offset, $request_time['year']);
+      $start_date_str    = date($date_format, $start_date);
+      $end_date_offset   = 6 - $start_date_offset;
+      $end_date          = mktime(23, 59, 59, $request_time['mon'], $request_time['mday'] + $end_date_offset, $request_time['year']);
+      $end_date_str      = date($date_format, $end_date);
+
+      // gather all events between start and end dates
+      $sql = 'SELECT n.nid FROM {node} n JOIN {field_data_field_date} d ON n.nid = d.entity_id WHERE n.type = :type AND d.field_date_value >= :start AND d.field_date_value <= :end';
+      $args = array(
+        ':type'  => 'event',
+        ':start' => $start_date_str,
+        ':end'   => $end_date_str,
+      );
+      $result = db_query($sql, $args);
+      foreach ($result as $record) {
+        $event_nids[] = $record->nid;
+      }
+
+      // gather all assignments based on events
+      foreach ($event_nids as $event_nid) {
+        $sql = 'SELECT t.user_uid, t.call_time, t.stop_time FROM {poc_event_timesheet} t WHERE t.event_nid = :nid';
+        $args = array(':nid' => $event_nid);
+        $result = db_query($sql, $args);
+        foreach ($result as $record) {
+          $user_uid = '';
+          $call_time  = '';
+          $stop_time  = '';
+
+          if (isset($record->user_uid)) {
+            $user_uid = $record->user_uid;
+          }
+          if (isset($record->call_time)) {
+            $call_time = $record->call_time;
+          }
+          if (isset($record->stop_time)) {
+            $stop_time = $record->stop_time;
+          }
+
+          // calculate and store hours by user for each assignment
+          if (($user_uid) && ($call_time) && ($stop_time)) {
+            if (isset($user_hours[$user_uid])) {
+              $user_hours[$user_uid] += poc_helper_calculate_time_delta($call_time, $stop_time);
+            }
+            else {
+              $user_hours[$user_uid] = poc_helper_calculate_time_delta($call_time, $stop_time);
+            }
+          }
+        }
+      }
+
+      // check which user exceeds threshold
+      foreach ($user_hours as $uid => $hours) {
+        if ($hours >= $overtime_scan_threshold) {
+          $overtime_uids[] = $uid;
+        }
+      }
+
+      watchdog('poc_assign', 'Overtime scan finished (' . count($overtime_uids) . ').', NULL, WATCHDOG_NOTICE);
+      variable_set('last_overtime_scan_timestamp', REQUEST_TIME);
+    }
+  }
+  else {
+    watchdog('poc_assign', 'One or more persistent variable for overtime scan is not set. Please check settings.', NULL, WATCHDOG_WARNING);
+  }
+}
+
+/*
+ * build user event ratings report
+ */
+function poc_assign_user_event_ratings($user_uid = 0) {
+  $data = array('header' => array('#', 'Event', 'Date', 'External Grade', 'Internal Grade'), 'rows' => array(), 'user' => '');
+  $num = 1;
+  $function_exists = function_exists('poc_helper_convert_date_from_ymd_to_njy');
+
+  $sql = 'SELECT field_address_name_line FROM {field_data_field_address} WHERE bundle = :bundle AND entity_id = :uid';
+  $args = array(
+    ':bundle' => 'user',
+    ':uid'    => $user_uid,
+  );
+  $result = db_query($sql, $args);
+  $record = $result->fetchObject();
+  if (isset($record->field_address_name_line)) {
+    $data['user'] = $record->field_address_name_line;
+  }
+
+  $sql = 'SELECT n.title, d.field_date_value, t.grade, t.internal_grade FROM {poc_event_timesheet} t JOIN {node} n ON t.event_nid = n.nid JOIN {field_data_field_date} d ON n.nid = d.entity_id WHERE d.bundle = :bundle AND t.user_uid = :uid';
+  $args = array(
+    ':bundle' => 'event',
+    ':uid'    => $user_uid,
+  );
+  $result = db_query($sql, $args);
+  foreach ($result as $record) {
+    $data['rows'][] = array(
+      'class'     => (($num % 2) == 1) ? 'odd' : 'even',
+      'num'       => $num,
+      'event'     => $record->title,
+      'date'      => ($function_exists) ? (poc_helper_convert_date_from_ymd_to_njy($record->field_date_value)) : ('N/A'),
+      'ext_grade' => (!empty($record->grade)) ? ($record->grade) : (0),
+      'int_grade' => (!empty($record->internal_grade)) ? ($record->internal_grade) : (0),
+    );
+    $num++;
+  }
+
+  return theme('user_event_ratings', $data);
+}
+
+/*
+ * miscellaneous methods
+ */
+
+/*
+ * find value in multi-dimensional arrays typically found in node objects
+ */
+function poc_assign_find_value($haystack, $needle) {
+  $found = FALSE;
+
+  foreach ($haystack as $num => $item) {
+    foreach ($item as $value) {
+      if ($value == $needle) {
+        $found = $num;
+        break;
+      }
+    }
+
+    if ($found !== FALSE) {
+      break;
+    }
+  }
+
+  return $found;
+}
+
+/*
+ * find and format user name and id
+ */
+function poc_assign_format_user_name_and_id($uid = 0) {
+  $data = '';
+
+  if ($uid) {
+    $sql = 'SELECT a.field_address_name_line FROM {field_data_field_address} a WHERE a.entity_id = :eid';
+    $args = array(':eid' => $uid);
+    $result = db_query($sql, $args);
+    $record = $result->fetchObject();
+    if (isset($record->field_address_name_line)) {
+      $data = $record->field_address_name_line . ' [' . $uid . ']';
+    }
+  }
+
+  return $data;
+}
+
+/*
+ * get user assignment information for an event
+ * for event detail view
+ */
+function poc_assign_get_user_assignment_info($nid = 0, $uid = 0) {
+  $data = array();
+
+  if (($nid) && ($uid)) {
+    $sql = 'SELECT position_tid, call_time, stop_time FROM {poc_event_timesheet} WHERE event_nid = :nid AND user_uid = :uid';
+    $args = array(
+      ':nid' => $nid,
+      ':uid' => $uid,
+    );
+    $result = db_query($sql, $args);
+    $record = $result->fetchObject();
+
+    $tid = $record->position_tid;
+    $term = taxonomy_term_load($tid);
+    if (isset($term->name)) {
+      $data['Position'] = $term->name;
+    }
+
+    if (isset($record->call_time)) {
+      $data['Call Time'] = $record->call_time;
+    }
+    if (isset($record->stop_time)) {
+      $data['Estimated End Time'] = $record->stop_time;
+    }
+  }
+
+  return $data;
+}
+
+/*
+ * get event document links for an event
+ */
+function poc_assign_get_event_docs($node = NULL) {
+  $data = array();
+
+  if (!empty($node)) {
+    $language = $node->language;
+    $tids = array(
+      variable_get('event_status_post_event_tid'),
+      variable_get('event_status_invoiced_tid'),
+    );
+    if (array_search($node->field_event_status[$language][0]['tid'], $tids) !== FALSE) {
+      $data['Timesheet'] = '<a href="/admin/timesheet/' . $node->nid . '">link</a>';
+      $data['Invoice PDF'] = '<a href="/admin/pdf/invoice/' . $node->nid . '">link</a>';
+    }
+  }
+
+  return $data;
+}
+

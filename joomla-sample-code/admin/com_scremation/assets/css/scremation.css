@@ -1,0 +1,23 @@
+/* CSS Document */
+.dashboard {
+    background: none repeat scroll 0 0 #F7F7F7;
+    border: 2px solid #D7D7D7;
+    border-radius: 20px 20px 20px 20px;
+	float:left;
+    margin: 20px auto;
+    padding: 30px;
+    width: 90%;
+}
+.dashboard  div {
+    float: left;
+    padding: 3%;
+    width: 44%;
+}
+.dashboard  div a {
+	font-size:20px;
+	font-weight:bold;
+}
+.dashboard  div p{
+	font-size:14px;
+	font-weight:bold;
+}

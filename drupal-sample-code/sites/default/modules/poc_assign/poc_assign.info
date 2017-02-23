@@ -1,0 +1,8 @@
+;$Id$
+name = POC Assign
+description = Implements event assignments and related features.
+package = POC
+core = 7.x
+version = "7.x-1.0-beta-1"
+files[] = poc_assign.module
+

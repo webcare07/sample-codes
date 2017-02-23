@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © 2016 Magento. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <payment>
+            <ddpay_ddbillb2c>
+                <active>1</active>
+                <debug>0</debug>
+                <model>DDPay\DDBillB2C\Model\DDBillB2C</model>
+                <payment_action>authorize_capture</payment_action>
+                <title>Dinpay B2C</title>
+                <create_order_before>1</create_order_before>
+                <merchant_code></merchant_code>
+                <public_key></public_key>
+                <private_key></private_key>
+            </ddpay_ddbillb2c>
+        </payment>
+    </default>
+</config>

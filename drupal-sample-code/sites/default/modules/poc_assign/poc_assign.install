@@ -1,0 +1,295 @@
+<?php
+
+/*
+ * implements hook_schema()
+ */
+function poc_assign_schema() {
+  $schema['poc_event_timesheet'] = array(
+    'fields' => array(
+      'event_nid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'event node id',
+      ),
+
+      'position_tid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'position taxonomy id',
+      ),
+
+      'position_num' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'position number',
+      ),
+
+      'user_uid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'user user id',
+      ),
+
+      'call_time' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'call time',
+      ),
+
+      'stop_time' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => TRUE,
+        'description' => 'end time',
+      ),
+
+      'note' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'note',
+      ),
+
+      'start_time' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'start time',
+      ),
+
+      'end_time' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'end time',
+      ),
+
+      'break' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'break',
+      ),
+
+      'spread_of_hours' => array(
+        'type'        => 'int',
+        'length'      => TRUE,
+        'not null'    => FALSE,
+        'description' => 'spread of hours',
+      ),
+
+      'billing_rate' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'billing rate',
+      ),
+
+      'pay_rate' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'pay rate',
+      ),
+
+      'payroll_hours' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'payroll hours',
+      ),
+
+      'grade' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'grade',
+      ),
+
+      'internal_grade' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'internal grade',
+      ),
+
+      'preferred' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'preferred',
+      ),
+
+      'disapproved' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'disapproved',
+      ),
+
+      'timestamp' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'entry timestamp',
+      ),
+    ),
+
+    'unique keys' => array(
+      'timesheet_key' => array('event_nid', 'position_tid', 'position_num'),
+    ),
+  );
+
+  $schema['poc_event_invoice_item'] = array(
+    'fields' => array(
+      'event_nid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'event node id',
+      ),
+
+      'date' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'date',
+      ),
+
+      'item' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'item',
+      ),
+
+      'description' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => TRUE,
+        'description' => 'description',
+      ),
+
+      'rate' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'rate',
+      ),
+
+      'quantity' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'hours',
+      ),
+
+      'timestamp' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'entry timestamp',
+      ),
+    ),
+  );
+
+  $schema['poc_event_expense_item'] = array(
+    'fields' => array(
+      'event_nid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'event node id',
+      ),
+
+      'user_uid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'user user id',
+      ),
+
+      'amount' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'amount',
+      ),
+
+      'timestamp' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'entry timestamp',
+      ),
+    ),
+  );
+
+  $schema['poc_user_availability'] = array(
+    'fields' => array(
+      'user_uid' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'description' => 'user user id',
+      ),
+
+      'date' => array(
+        'type'        => 'varchar',
+        'length'      => 255,
+        'not null'    => FALSE,
+        'description' => 'date',
+      ),
+
+      'all_day' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'all day',
+      ),
+
+      'start_hour' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'start hour',
+      ),
+
+      'end_hour' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => FALSE,
+        'description' => 'end hour',
+      ),
+
+      'timestamp' => array(
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+        'description' => 'entry timestamp',
+      ),
+    ),
+
+    'unique keys' => array(
+      'availability_key' => array('user_uid', 'date'),
+    ),
+  );
+
+  return $schema;
+}
+

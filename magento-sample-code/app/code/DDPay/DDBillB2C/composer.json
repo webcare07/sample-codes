@@ -1,0 +1,23 @@
+{
+    "name": "ddpay/ddbillb2c",
+    "description": "Dinpay B2C integration for Magento 2",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": [
+        "OSL-3.0"
+    ],
+    "require": {
+        "php": "~5.5.0|~5.6.0",
+        "magento/module-store": "1.0.0-beta",
+        "magento/module-catalog": "1.0.0-beta",
+        "magento/module-catalog-inventory": "1.0.0-beta",
+        "magento/module-ui": "self.version",
+        "magento/magento-composer-installer": "*"
+    },
+    "autoload": {
+        "files": [ "registration.php" ],
+        "psr-4": {
+		  "Magento\\Composer\\": ""
+		}
+    }
+}
