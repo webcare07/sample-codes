@@ -1,4 +1,3 @@
-;$Id$
 name = POC Assign
 description = Implements event assignments and related features.
 package = POC

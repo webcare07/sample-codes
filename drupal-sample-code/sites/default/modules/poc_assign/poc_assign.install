@@ -1,5 +1,4 @@
 <?php
-
 /*
  * implements hook_schema()
  */
