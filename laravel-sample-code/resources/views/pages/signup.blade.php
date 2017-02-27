@@ -57,6 +57,7 @@
 				var ajaxLoading = false;
 				var app = angular.module('signupApp', []);
 				app.controller('signupCtrl', function($scope) {
+					$scope.user._token = $('meta[name="csrf-token"]').attr('content');
 					$scope.user.signup = function() {
 						if( $scope.user.password != $scope.user.cnfpassword ) {
 							$scope.messages = "Confirm Password is not match with Password.";
@@ -70,7 +71,7 @@
 						response.success(function(data, status, headers, config){
 							var json = JSON.parse(data);
 							if( json.status == 1 )
-								$location.path('/dashboard');
+								$location.path('/login');
 							else {
 								$scope.messages = json.message;
 								ajaxLoading = false;

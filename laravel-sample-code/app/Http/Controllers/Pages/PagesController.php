@@ -365,4 +365,56 @@ class PagesController extends Controller
         }
     }
 
+    /**
+     * signup
+     * action method to load signup page
+     * created Feb 9, 2017
+     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     *
+     */
+    public function signup()
+    {
+		return view('pages.signup');
+    }
+
+    /**
+     * signup_save
+     * action method to load signup_save page
+     * created Feb 9, 2017
+     * @return JSON
+     *
+     */
+    public function signup_save()
+    {
+		$status = 0;
+		$message = '';
+		$data = Input::all();
+
+		$validator = Validator::make($data, [
+            'firstname' => 'required|max:50',
+            'lastname' => 'required|max:50',
+            'username' => 'required|username|max:100|unique:users',
+            'usermail' => 'required|email|max:255|unique:users',
+            'password' => 'required|min:8',
+        ]);
+		
+		$errors = (array)$validator->errors()->all();
+		
+		if( count( $errors) )
+			$message = implode('<br />', $errors);
+		else
+		{
+			$created = User::create([
+				'username' => $data['username'],
+				'email' => $data['usermail'],
+				'password' => bcrypt($data['password']),
+			]);
+			
+			if( $created )
+				$status = 1;
+		}
+
+		return Response::json(array('status' => $status, 'message' => $message)); 	
+    }
+
 }
