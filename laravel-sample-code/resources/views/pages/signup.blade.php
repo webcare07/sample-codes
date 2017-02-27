@@ -65,7 +65,7 @@
 				
 						ajaxLoading = true;
 				
-						var response = $http.post("/pages/signup", $scope.user, {});
+						var response = $http.post("/pages/signupsave", $scope.user, {});
 				
 						response.success(function(data, status, headers, config){
 							var json = JSON.parse(data);
